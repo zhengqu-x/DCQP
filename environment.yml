@@ -1,0 +1,33 @@
+name: dcqp-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.8
+  - numpy
+  - scipy
+  - matplotlib
+
+  # Documentation tools (optional)
+  - sphinx
+  - sphinx_rtd_theme
+  
+  # Development tools (optional)
+  - git
+  
+# Note: This environment file is provided for reference.
+# The core DCQP solver requires:
+# 
+# 1. MATLAB R2020a or later
+# 2. MATLAB Optimization Toolbox  
+# 3. Gurobi Optimizer (with MATLAB interface)
+# 4. MOSEK (with MATLAB interface)
+#
+# These cannot be installed via conda and must be installed separately.
+# 
+# To create this environment:
+# conda env create -f environment.yml
+# conda activate dcqp-env
+#
+# Then install MATLAB, Gurobi, and MOSEK according to their
+# respective installation instructions.

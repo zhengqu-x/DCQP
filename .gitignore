@@ -1,0 +1,47 @@
+# MATLAB temporary files
+*.asv
+*.autosave
+
+# MATLAB compiled files
+*.p
+*.mex*
+
+# MATLAB workspace files
+*.mat
+
+# MATLAB code generation files
+codegen/
+
+# Simulink files
+*.slx.autosave
+*.slxc
+slprj/
+
+# Result and log files
+testresults/*.mat
+paper-examples/testresults/*.mat
+paper-examples/summary_results/*.mat
+*.txt
+diaryfile*.txt
+
+# System files
+.DS_Store
+Thumbs.db
+*.tmp
+*~
+
+# IDE files
+.vscode/
+.idea/
+
+# Backup files
+*.bak
+*.backup
+
+# Output directories
+output/
+results/
+temp/
+
+# Documentation build
+docs/_build/

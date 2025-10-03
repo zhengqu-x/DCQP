@@ -1,0 +1,209 @@
+function dcqp_startup()
+% Add legacy directory
+dcqp_root = fileparts(mfilename('fullpath'));
+legacy_dir = fullfile(dcqp_root, 'legacy');
+if exist(legacy_dir, 'dir')
+    addpath(legacy_dir);
+    fprintf('  Added legacy directory\n');
+end
+% DCQP_STARTUP  Initialize the DC-QP solver environment
+%
+% SYNTAX:
+%   dcqp_startup()
+%
+% DESCRIPTION:
+%   This function sets up the DCQP solver environment by:
+%   - Adding necessary paths to MATLAB
+%   - Checking for required dependencies
+%   - Running basic functionality tests
+%   - Displaying system information
+%
+% USAGE:
+%   Run this function once after installing the DCQP solver:
+%     dcqp_startup();
+%
+%   For automatic setup, add the following to your MATLAB startup.m file:
+%     addpath('/path/to/DC-QP');
+%     dcqp_startup();
+
+% Copyright (c) 2025
+% All rights reserved.
+
+fprintf('=== DC-QP Solver Initialization ===\n\n');
+
+% Get current directory
+dcqp_root = fileparts(mfilename('fullpath'));
+fprintf('DC-QP root directory: %s\n', dcqp_root);
+
+% Add paths
+fprintf('Setting up MATLAB paths...\n');
+addpath(dcqp_root);
+
+
+% Add utils directory
+utils_dir = fullfile(dcqp_root, 'utils');
+if exist(utils_dir, 'dir')
+    addpath(utils_dir);
+    fprintf('  Added utils directory\n');
+end
+
+% Add plotstables directory (optional, if needed)
+plotstables_dir = fullfile(dcqp_root, 'plotstables');
+if exist(plotstables_dir, 'dir')
+    addpath(plotstables_dir);
+    fprintf('  Added plotstables directory\n');
+end
+
+% Add examples directory
+examples_dir = fullfile(dcqp_root, 'examples');
+if exist(examples_dir, 'dir')
+    addpath(examples_dir);
+    fprintf('  Added examples directory\n');
+end
+
+% Check MATLAB version
+matlab_version = version('-release');
+matlab_year = str2double(matlab_version(1:4));
+fprintf('\nMATLAB version: %s', matlab_version);
+if matlab_year >= 2020
+    fprintf(' ✓\n');
+else
+    fprintf(' ⚠️  (Recommended: R2020a or later)\n');
+end
+
+% Check for required toolboxes
+fprintf('\nChecking MATLAB toolboxes...\n');
+if license('test', 'Optimization_Toolbox')
+    fprintf('  Optimization Toolbox: ✓\n');
+else
+    fprintf('  Optimization Toolbox: ✗ (Required)\n');
+end
+
+% Check for third-party solvers
+fprintf('\nChecking third-party solvers...\n');
+
+% Check MOSEK
+try
+    mosekopt('version');
+    fprintf('  MOSEK: ✓\n');
+    mosek_available = true;
+catch
+    fprintf('  MOSEK: ✗ (Required for SDP computations)\n');
+    mosek_available = false;
+end
+
+% Check Gurobi
+try
+    model = struct();
+    model.A = sparse(1, 1);
+    model.rhs = 0;
+    model.sense = '=';
+    model.obj = full(1);  % Ensure obj is dense
+    params = struct();
+    params.OutputFlag = 0;
+    gurobi(model, params);
+    fprintf('  Gurobi: ✓\n');
+    gurobi_available = true;
+catch
+    fprintf('  Gurobi: ✗ (Required for LP/QP subproblems)\n');
+    gurobi_available = false;
+end
+
+% Summary of requirements
+fprintf('\nDependency status:\n');
+if mosek_available && gurobi_available
+    fprintf('  All required solvers available ✓\n');
+    all_deps_ok = true;
+else
+    fprintf('  Missing required solvers ✗\n');
+    all_deps_ok = false;
+    
+    fprintf('\nTo install missing dependencies:\n');
+    if ~mosek_available
+        fprintf('  - MOSEK: Visit https://www.mosek.com/ for installation\n');
+    end
+    if ~gurobi_available
+        fprintf('  - Gurobi: Visit https://www.gurobi.com/ for installation\n');
+    end
+end
+
+% Run basic functionality test if all dependencies are available
+if all_deps_ok
+    fprintf('\nRunning basic functionality test...\n');
+    try
+        % Simple test problem with bounded feasible region - INDEFINITE Q
+        Q = [-1, 0.5; 0.5, 1];  % Indefinite matrix (required for DCQP)
+        d = [-1; -1];
+        
+        % Create bounded feasible region: 0 <= x <= 2
+        A = [-1, 0;    % -x₁ <= 0  → x₁ >= 0
+             0, -1;    % -x₂ <= 0  → x₂ >= 0  
+             1, 0;     %  x₁ <= 2
+             0, 1];    %  x₂ <= 2
+        b = [0; 0; 2; 2];
+        
+        % Validate the test problem before using it
+        params = dcqp_default_params();
+        params.verbose = false;
+        
+        try
+            dcqp_check_input(Q, d, A, b, [], [], params);
+        catch ME
+            fprintf('  Test problem validation failed: %s\n', ME.message);
+            fprintf('  Skipping functionality test.\n');
+            return;
+        end
+        
+        [x, fval, info] = dcqp_solve(Q, d, A, b, [], [], params);
+        
+        % Check if we got a reasonable result
+        if strcmp(info.status, 'optimal') && all(isfinite(x)) && all(A*x <= b + 1e-6)
+            fprintf('  Basic test: ✓ (solved in %.2f seconds)\n', info.time);
+        else
+            fprintf('  Basic test: ⚠️  (unexpected result: x=[%.3f,%.3f], status=%s)\n', ...
+                    x(1), x(2), info.status);
+        end
+        
+    catch ME
+        fprintf('  Basic test: ✗ (error: %s)\n', ME.message);
+    end
+else
+    fprintf('\nSkipping functionality test (missing dependencies)\n');
+end
+
+% Display usage information
+fprintf('\n=== Quick Start ===\n');
+fprintf('To solve a quadratic program:\n\n');
+fprintf('  %% Define your problem\n');
+fprintf('  Q = [2, -1; -1, 2];  %% Objective Hessian\n');
+fprintf('  d = [-1; -1];        %% Linear coefficients\n');
+fprintf('  A = [-1, 0; 0, -1];  %% Inequality constraints\n');
+fprintf('  b = [0; 0];          %% Inequality bounds\n\n');
+fprintf('  %% Solve\n');
+fprintf('  [x, fval, info] = dcqp_solve(Q, d, A, b);\n\n');
+fprintf('For examples: run the scripts in the examples/ directory\n');
+fprintf('For help: type ''help dcqp_solve'' or ''doc dcqp_solve''\n');
+
+% Display final status
+fprintf('\n=== Initialization Complete ===\n');
+if all_deps_ok
+    fprintf('Status: Ready to use ✓\n');
+else
+    fprintf('Status: Needs setup ⚠️\n');
+end
+
+fprintf('DCQP solver initialized successfully!\n\n');
+
+% Suggest next steps
+if all_deps_ok
+    fprintf('Suggested next steps:\n');
+    fprintf('  1. Run examples: cd examples; example_basic\n');
+    fprintf('  2. Run tests: test_dcqp_solver\n');
+    fprintf('  3. Try benchmarks: run_benchmarks([10, 20], 3)\n');
+else
+    fprintf('Next steps:\n');
+    fprintf('  1. Install missing dependencies (see above)\n');
+    fprintf('  2. Run dcqp_startup again to verify installation\n');
+end
+
+end
