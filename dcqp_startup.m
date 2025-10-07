@@ -157,7 +157,7 @@ if all_deps_ok
         [x, fval, info] = dcqp_solve(Q, d, A, b, [], [], params);
         
         % Check if we got a reasonable result
-        if strcmp(info.status, 'optimal') && all(isfinite(x)) && all(A*x <= b + 1e-6)
+        if info.gap<=params.gap_tolerance && all(isfinite(x)) && all(A*x <= b + 1e-6)
             fprintf('  Basic test: ✓ (solved in %.2f seconds)\n', info.time);
         else
             fprintf('  Basic test: ⚠️  (unexpected result: x=[%.3f,%.3f], status=%s)\n', ...

@@ -330,6 +330,25 @@ DCQP/
 
 - **Zheng Qu, Defeng Sun, Jintao Xu** 
 
+## Citation
+
+If you use DCQP in your research, please cite the following paper:
+
+```bibtex
+@misc{qu2025progressiveboundstrengtheningdoubly,
+      title={Progressive Bound Strengthening via Doubly Nonnegative Cutting Planes for Nonconvex Quadratic Programs}, 
+      author={Zheng Qu and Defeng Sun and Jintao Xu},
+      year={2025},
+      eprint={2510.02948},
+      archivePrefix={arXiv},
+      primaryClass={math.OC},
+      url={https://arxiv.org/abs/2510.02948}, 
+}
+```
+
+**Plain text citation:**
+> Zheng Qu, Defeng Sun, and Jintao Xu. "Progressive Bound Strengthening via Doubly Nonnegative Cutting Planes for Nonconvex Quadratic Programs." arXiv preprint arXiv:2510.02948, 2025. https://arxiv.org/abs/2510.02948
+
 ## License
 
 This software is distributed under an Academic License. See `LICENSE` file for details.

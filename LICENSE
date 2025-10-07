@@ -14,7 +14,9 @@ following conditions:
    copyright holders.
 
 3. Any published work that uses this software must cite the following paper:
-   [Please add your paper citation here when published]
+   Zheng Qu, Defeng Sun, and Jintao Xu. "Progressive Bound Strengthening via 
+   Doubly Nonnegative Cutting Planes for Nonconvex Quadratic Programs." 
+   arXiv preprint arXiv:2510.02948, 2025. https://arxiv.org/abs/2510.02948
 
 4. Redistributions of the software must retain the original copyright notice
    and this license.
