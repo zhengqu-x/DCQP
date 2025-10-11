@@ -237,7 +237,7 @@ Each benchmark and synthetic run generates detailed results:
 **Saved Files**:
 - **Diary files**: `diaryfile-benchmark-dcqp.txt`, `diaryfile-synthetic-dcqp.txt`, etc. containing complete console logs
 - **Individual result files**: Saved in `paper-examples/testresults/` directory with timestamps (e.g., `gurobi_qp20_10_1_1-2025-10-03_13-18-07.mat`) containing `bestsol` (optimal solution vector) and `info` (performance metrics for that instance)
-- **Summary statistics**: Saved in `paper-examples/summary_results/` directory as `myrecord` matrices containing performance data for all solved instances. Each row represents one problem instance with 6 columns: [optimality_gap, max_constraint_violation, equality_constraint_violation, objective_value, lower_bound, computation_time]. For synthetic problems, this is only saved when all 20 instances in a group are solved together (not for individual instance runs).
+- **Summary statistics**: Saved in `paper-examples/summary_results/` directory as `myrecord` matrices containing performance data for all solved instances. Each row represents one problem instance with 6 columns: [optimality_gap, max_constraint_violation, equality_constraint_violation, objective_value, lower_bound, computation_time, number of iterations]. For synthetic problems, this is only saved when all 20 instances in a group are solved together (not for individual instance runs).
 
 
 ## Function Reference

@@ -31,7 +31,6 @@ tol_mosek = parameters.tol_mosek;
 tol_glp = parameters.tol_glp;
 tol_gqp = parameters.tol_gqp;
 eta=parameters.eta;
-tol_mosek_cut=parameters.tol_mosek_cut;
 
 
 bestub= ub;

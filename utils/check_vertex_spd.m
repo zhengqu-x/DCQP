@@ -51,12 +51,14 @@ else
         % Check whether Q|_H_I_x > 0
         B = null(A_I_x);
         BH=B'*Q*B;
-        if min(eig(BH))>-epsilon
+        eigBH=eig(BH);
+        if min(eigBH)>-epsilon     
             spd_flag = 1;
-            [V,D]=eig(BH);
-            dd=diag(D);
-            BH=V*diag(dd.*(dd>epsilon))*V';
-
+            if min(eigBH)<epsilon
+                [V,D]=eig(BH);
+                dd=diag(D);
+                BH=V*diag(dd.*(dd>epsilon))*V';
+            end
         end
     end
 end

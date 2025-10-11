@@ -12,7 +12,7 @@ diary diaryfile-benchmark-dcqp.txt
 
 
 datalocation='../data/benchmark/';
-myrecord=zeros(16,6);
+myrecord=zeros(16,7);
 
 fprintf("**************************************start to solve ")
 fprintf(group_name);
@@ -72,6 +72,7 @@ for k=1:4
     myrecord(i,4)=fval;
     myrecord(i,5)=info.lower_bound;
     myrecord(i,6)=info.time;
+    myrecord(i,7)=info.iterations;
 
 
      end

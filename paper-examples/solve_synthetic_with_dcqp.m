@@ -16,7 +16,7 @@ diary diaryfile-synthetic-dcqp.txt
 
 
 datalocation='../data/synthetic/';
-myrecord=zeros(20,6);
+myrecord=zeros(20,7);
 
 fprintf("**************************************start to solve ")
 fprintf(group_name);
@@ -68,6 +68,7 @@ for i=1:length(K)
     params.nb_rounds=100;
     params.filename=filename;
     params.do_scaling=true;
+    params.tol_mosek = 1e-9; 
     %params.verbose=true;
     
 
@@ -86,6 +87,7 @@ for i=1:length(K)
     myrecord(k,4)=fval;
     myrecord(k,5)=info.lower_bound;
     myrecord(k,6)=info.time;
+    myrecord(i,7)=info.iterations;
 end
 
 if length(K)==20 

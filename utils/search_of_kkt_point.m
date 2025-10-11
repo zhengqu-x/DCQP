@@ -43,7 +43,6 @@ while iteration_number<=1000
         end
         v_tilde=x_tilde'*Q*x_tilde+2*d'*x_tilde;
         if abs(v_tilde-v_hat) <= max(1e-8*abs(v_hat),1e-9)
-          
                 [x_bar] = gurobiqp(0.5*M,0.5*(d - N*x_hat),A,b,Aeq,beq,met_gqp,tol_gqp,n);
                 v_bar=x_bar'*Q*x_bar+2*d'*x_bar;      
                 if v_hat-v_bar <= max(1e-8*abs(v_hat),1e-9) 

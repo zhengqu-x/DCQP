@@ -41,21 +41,33 @@ model.vtype = 'C';
 params.OutputFlag = 0; 
 
 % Tolerance setting
+
+params.FeasibilityTol = tol_gqp; 
 params.OptimalityTol = tol_gqp; 
+params.BarConvTol = tol_gqp; 
 params.LPWarmStart = 2; 
 
 % Solve model with Gurobi
 result = gurobi(model, params);
 x=[];
 
+
 if strcmp(result.status,'OPTIMAL')
     exitflag = 1; 
     x = result.x;
+    v=x'*Q*x+2*d'*x;
+    if isempty(Aeq) && isempty(beq)
+        if v>0 && min(b)>=0
+            x=zeros(n,1);
+        end
+    end
 elseif strcmp(result.status,'INFEASIBLE')
     exitflag = -1; % Infeasible
 elseif strcmp(result.status,'UNBOUNDED')
     exitflag = -2; % Unbounded
 end
+
+
 
 
 
