@@ -46,7 +46,6 @@ if isempty(A_I_x)
 else
     if rank(A_I_x) == size(A, 2)
         vertex_flag = 1;
-
     else
         % Check whether Q|_H_I_x > 0
         B = null(A_I_x);
@@ -54,11 +53,11 @@ else
         eigBH=eig(BH);
         if min(eigBH)>-epsilon     
             spd_flag = 1;
-            if min(eigBH)<epsilon
+            %if min(eigBH)<epsilon
                 [V,D]=eig(BH);
                 dd=diag(D);
                 BH=V*diag(dd.*(dd>epsilon))*V';
-            end
+            %end
         end
     end
 end
