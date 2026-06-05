@@ -81,7 +81,7 @@ end
 try
     % Validate inputs
     maintimer=tic;
-    n=dcqp_check_input(Q, d, A, b, Aeq, beq, params);
+    [n,Q,d,A,b,Aeq,beq,x_shift,obj_constant]=dcqp_check_input(Q, d, A, b, Aeq, beq, params);
     
     nb_rounds = max(1, min(n, params.nb_rounds));
     
@@ -102,20 +102,26 @@ try
     [ub2,sol2]=compute_ub(Q,d,A,b,Aeq,beq,n,params,sol,nb_rounds);
 
     if params.verbose==true
-        fprintf('initial objective value=%.2f\n',ub2);
+        fprintf('initial objective value=%.2f\n',ub2/params.scaling+obj_constant);
     end
     [best_ub,best_sol,best_lb,nb_iters]=qpsolver(Q,d,A,b,Aeq,beq,-Inf,ub2,sol2,params);
     total_time=toc(maintimer);
     
-    x_opt = best_sol;
-    fval = best_ub ;
-    final_lb = best_lb;
+    x_opt = best_sol + x_shift;
+    fval = best_ub + obj_constant;
+    final_lb = best_lb + obj_constant;
     
-    % Compute final relative gap
-    if abs(fval) > 1e-8
-        gap = abs(fval - final_lb) / abs(fval);
+    % Compute final gap in shifted solver coordinates to avoid sensitivity
+    % to the additive objective constant introduced by variable shifting.
+    if abs(best_ub) > params.gap_tolerance
+        gap = abs(best_ub - best_lb) / abs(best_ub);
     else
-        gap = abs(fval - final_lb);
+        gap = abs(best_ub - best_lb);
+    end
+    if abs(fval) > params.gap_tolerance
+        original_gap = abs(fval - final_lb) / abs(fval);
+    else
+        original_gap = abs(fval - final_lb);
     end
     
     
@@ -139,7 +145,10 @@ try
     info.time = total_time;
     info.upper_bound = fval;
     info.lower_bound = final_lb;
+    info.original_gap = original_gap;
     info.scaling = params.scaling;
+    info.variable_shift = x_shift;
+    info.objective_constant = obj_constant;
 
     
     
@@ -150,6 +159,9 @@ try
         fprintf('Status: %s\n', status);
         fprintf('Best objective value: %.6e\n', fval);
         fprintf('Relative gap: %.2e\n', gap);
+        fprintf('Original-coordinate relative gap: %.2e\n', original_gap);
+        fprintf('Variable shift norm: %.2e\n', norm(x_shift));
+        fprintf('Objective constant from shift: %.6e\n', obj_constant);
         fprintf('Computation time: %.2f seconds\n', total_time);
         fprintf('Number of iterations: %d\n', info.iterations);
         fprintf('Problem dimension: %d variables, %d inequality constraints, %d equality constraints\n', n, size(A,1),size(Aeq,1));

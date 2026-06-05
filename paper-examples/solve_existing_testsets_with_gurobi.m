@@ -1,4 +1,4 @@
-function solve_benchmark_with_gurobi(group_name,Tlimit)
+function solve_existing_testsets_with_gurobi(group_name,Tlimit)
 
 
 valid_groups = {'qp20_10', 'qp30_15', 'qp40_20', 'qp50_25'};
@@ -6,12 +6,12 @@ if ~ismember(group_name, valid_groups)
     error('Invalid group_name. Must be one of: %s', strjoin(valid_groups, ', '));
 end
 
-diary diaryfile-benchmark-gurobi.txt
+diary diaryfile-existing-testsets-gurobi.txt
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-datalocation='../data/benchmark/';
+datalocation='../data/existing_testsets/';
 myrecord=zeros(16,6);
 
 
@@ -100,7 +100,7 @@ for k=1:4
         timestamp = string(datetime('now', 'Format', 'yyyy-MM-dd_HH-mm-ss'));
         file_name=fullfile(resultsfolder, sprintf('gurobi_%s-%s.mat', filename,  timestamp));
 
-        info=myrecord(k,:);
+        info=myrecord(i,:);
         save(char(file_name),"bestsol","info");
 
     end

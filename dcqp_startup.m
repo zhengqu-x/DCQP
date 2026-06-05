@@ -1,11 +1,4 @@
 function dcqp_startup()
-% Add legacy directory
-dcqp_root = fileparts(mfilename('fullpath'));
-legacy_dir = fullfile(dcqp_root, 'legacy');
-if exist(legacy_dir, 'dir')
-    addpath(legacy_dir);
-    fprintf('  Added legacy directory\n');
-end
 % DCQP_STARTUP  Initialize the DC-QP solver environment
 %
 % SYNTAX:
@@ -39,6 +32,12 @@ fprintf('DC-QP root directory: %s\n', dcqp_root);
 fprintf('Setting up MATLAB paths...\n');
 addpath(dcqp_root);
 
+% Add legacy directory
+legacy_dir = fullfile(dcqp_root, 'legacy');
+if exist(legacy_dir, 'dir')
+    addpath(legacy_dir);
+    fprintf('  Added legacy directory\n');
+end
 
 % Add utils directory
 utils_dir = fullfile(dcqp_root, 'utils');
@@ -54,11 +53,11 @@ if exist(plotstables_dir, 'dir')
     fprintf('  Added plotstables directory\n');
 end
 
-% Add examples directory
-examples_dir = fullfile(dcqp_root, 'examples');
-if exist(examples_dir, 'dir')
-    addpath(examples_dir);
-    fprintf('  Added examples directory\n');
+% Add paper example scripts
+paper_examples_dir = fullfile(dcqp_root, 'paper-examples');
+if exist(paper_examples_dir, 'dir')
+    addpath(paper_examples_dir);
+    fprintf('  Added paper-examples directory\n');
 end
 
 % Check MATLAB version
@@ -175,13 +174,13 @@ end
 fprintf('\n=== Quick Start ===\n');
 fprintf('To solve a quadratic program:\n\n');
 fprintf('  %% Define your problem\n');
-fprintf('  Q = [2, -1; -1, 2];  %% Objective Hessian\n');
-fprintf('  d = [-1; -1];        %% Linear coefficients\n');
-fprintf('  A = [-1, 0; 0, -1];  %% Inequality constraints\n');
-fprintf('  b = [0; 0];          %% Inequality bounds\n\n');
+fprintf('  Q = [1, -1; -1, -1];      %% Indefinite objective Hessian\n');
+fprintf('  d = [1; 1];               %% Linear coefficients\n');
+fprintf('  A = [1, 1; -1, 0; 0, -1]; %% Bounded inequality constraints\n');
+fprintf('  b = [1; 0; 0];            %% Inequality bounds\n\n');
 fprintf('  %% Solve\n');
 fprintf('  [x, fval, info] = dcqp_solve(Q, d, A, b);\n\n');
-fprintf('For examples: run the scripts in the examples/ directory\n');
+fprintf('For examples: run dcqp_demo() or the scripts in paper-examples/\n');
 fprintf('For help: type ''help dcqp_solve'' or ''doc dcqp_solve''\n');
 
 % Display final status
@@ -197,9 +196,9 @@ fprintf('DCQP solver initialized successfully!\n\n');
 % Suggest next steps
 if all_deps_ok
     fprintf('Suggested next steps:\n');
-    fprintf('  1. Run examples: cd examples; example_basic\n');
-    fprintf('  2. Run tests: test_dcqp_solver\n');
-    fprintf('  3. Try benchmarks: run_benchmarks([10, 20], 3)\n');
+    fprintf('  1. Run demo: dcqp_demo()\n');
+    fprintf('  2. Try existing test sets: solve_existing_testsets_with_dcqp(''qp20_10'')\n');
+    fprintf('  3. Compare with Gurobi: solve_existing_testsets_with_gurobi(''qp20_10'')\n');
 else
     fprintf('Next steps:\n');
     fprintf('  1. Install missing dependencies (see above)\n');

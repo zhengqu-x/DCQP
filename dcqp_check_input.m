@@ -1,8 +1,8 @@
-function n=dcqp_check_input(Q, d, A, b, Aeq, beq, params)
+function [n,Q,d,A,b,Aeq,beq,x_shift,obj_constant]=dcqp_check_input(Q, d, A, b, Aeq, beq, params)
 % DCQP_CHECK_INPUT  Validate inputs for the DCQP solver
 %
 % SYNTAX:
-%   dcqp_check_input(Q, d, A, b, Aeq, beq, params)
+%   [n,Q,d,A,b,Aeq,beq,x_shift,obj_constant] = dcqp_check_input(Q, d, A, b, Aeq, beq, params)
 %
 % DESCRIPTION:
 %   Performs comprehensive input validation for the DCQP solver,
@@ -23,14 +23,21 @@ function n=dcqp_check_input(Q, d, A, b, Aeq, beq, params)
 %   params  - Structure with algorithm parameters
 %
 % OUTPUT:
-%   (none) - Throws error if validation fails
+%   n            - Number of variables
+%   Q,d,A,b,Aeq,beq
+%                - Problem data transformed to y = x - x_shift
+%   x_shift      - Variable lower-bound shift applied before solving
+%   obj_constant - Constant term to add back to the shifted objective value
 %
 % ERRORS:
 %   Throws descriptive errors for invalid inputs, missing inequality
 %   constraints, or potentially unbounded feasible regions
 
-% Copyright (c) 2025
+% Copyright (c) 2026
 % All rights reserved.
+
+x_shift = [];
+obj_constant = 0;
 
 % Check that Q is provided and is a matrix
 if isempty(Q) || ~ismatrix(Q)
@@ -172,7 +179,16 @@ else
 end
 % Check feasibility and boundedness of constraint system
 % The feasible region must be non-empty and bounded for the DCQP algorithm to work properly
-check_feasibility_and_boundedness(A, b, Aeq, beq, n);
+x_shift = check_feasibility_and_boundedness(A, b, Aeq, beq, n);
+
+% Shift variables to y = x - x_shift so the transformed feasible set is nonnegative.
+% This supports the correction step, which bounds ||y|| using max sum(y).
+obj_constant = x_shift' * Q * x_shift + 2 * d' * x_shift;
+d = Q * x_shift + d;
+b = b - A * x_shift;
+if ~isempty(Aeq)
+    beq = beq - Aeq * x_shift;
+end
 
 
 % Check parameters structure
@@ -240,7 +256,7 @@ end
 
 
 
-function check_feasibility_and_boundedness(A, b, Aeq, beq, n)
+function lower_bounds = check_feasibility_and_boundedness(A, b, Aeq, beq, n)
 % CHECK_FEASIBILITY_AND_BOUNDEDNESS  Verify feasible region is non-empty and bounded
 %
 % DESCRIPTION:
@@ -280,12 +296,10 @@ catch ME
     if contains(ME.identifier, 'dcqp_check_input:')
         rethrow(ME); % Re-throw our own errors
     else
-        % If gurobilp fails for some other reason, issue a warning
-        warning('dcqp_check_input:feasibility_check_failed', ...
-                ['Could not verify feasibility due to solver error: %s. ', ...
-                 'Proceeding with assumption that constraints are feasible.'], ...
-                ME.message);
-        return; % Skip boundedness check if we can't even check feasibility
+        error('dcqp_check_input:feasibility_check_failed', ...
+              ['Could not verify feasibility due to solver error: %s. ', ...
+               'Cannot shift variables safely without a verified feasible region.'], ...
+              ME.message);
     end
 end
 
@@ -296,6 +310,7 @@ end
 
 fprintf('Checking boundedness by computing variable bounds...\n');
 
+lower_bounds = zeros(n,1);
 unbounded_vars = [];
 large_bound_vars = [];
 bound_threshold = 1e10; % Consider bounds larger than this as "effectively unbounded"
@@ -331,14 +346,14 @@ for i = 1:n
         
         % Check if optimization failed
         if exitflag_min ~= 1 || exitflag_max ~= 1
-            warning('dcqp_check_input:bound_computation_failed', ...
-                    'Could not compute bounds for variable x_%d', i);
-            continue;
+            error('dcqp_check_input:bound_computation_failed', ...
+                  'Could not compute bounds for variable x_%d', i);
         end
         
         % Compute actual bounds
         x_min = lb_val;
         x_max = -neg_ub_val; % Convert back from minimizing -x_i
+        lower_bounds(i) = x_min;
         
         % Check if bounds are reasonable
         if abs(x_min) > bound_threshold || abs(x_max) > bound_threshold
@@ -349,8 +364,11 @@ for i = 1:n
         end
         
     catch ME
-        warning('dcqp_check_input:bound_computation_error', ...
-                'Error computing bounds for variable x_%d: %s', i, ME.message);
+        if contains(ME.identifier, 'dcqp_check_input:')
+            rethrow(ME);
+        end
+        error('dcqp_check_input:bound_computation_error', ...
+              'Error computing bounds for variable x_%d: %s', i, ME.message);
     end
 end
 

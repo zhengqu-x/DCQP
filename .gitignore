@@ -8,6 +8,7 @@
 
 # MATLAB workspace files
 *.mat
+!data/**/*.mat
 
 # MATLAB code generation files
 codegen/
@@ -45,3 +46,7 @@ temp/
 
 # Documentation build
 docs/_build/
+
+# Local draft/support files
+Files_to_be_modified.pdf
+colleague_explanation.tex

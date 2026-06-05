@@ -1,4 +1,4 @@
-function solve_benchmark_with_dcqp(group_name)
+function solve_existing_testsets_with_dcqp(group_name)
 
 
 valid_groups = {'qp20_10', 'qp30_15', 'qp40_20', 'qp50_25'};
@@ -6,12 +6,12 @@ if ~ismember(group_name, valid_groups)
     error('Invalid group_name. Must be one of: %s', strjoin(valid_groups, ', '));
 end
 
-diary diaryfile-benchmark-dcqp.txt
+diary diaryfile-existing-testsets-dcqp.txt
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-datalocation='../data/benchmark/';
+datalocation='../data/existing_testsets/';
 myrecord=zeros(16,7);
 
 fprintf("**************************************start to solve ")

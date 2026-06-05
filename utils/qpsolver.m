@@ -11,7 +11,7 @@ function [bestub,best_sol,bestlb,nb_iters]=qpsolver(Q,d,A,b,Aeq,beq,lb,ub,sol,pa
 % A, b             Parameters of the inequality constraint A x <= b
 % Aeq, beq         Equality constraints: Aeq x = beq
 % lb, ub           Known lower and upper bounds of the objective value
-% sol              Initial feasible solution 
+% sol              Initial feasible solution
 % parameters       Structure containing algorithm parameters:
 %
 % OUTPUT
@@ -50,7 +50,7 @@ time_record_kkt=zeros(max_N,1);
 time_record_generate_cut=zeros(max_N,1);
 
 
-[M,N] = DC_decomposition(Q,spn);
+
 
 A_bar=A;
 b_bar=b;
@@ -62,16 +62,24 @@ cut_val=Inf;
 n=size(A_bar,2);
 [~,tstar0,~]=gurobilp(-ones(n,1),A_bar,b_bar,Aeq,beq,[],[],met_glp,tol_glp);
 
+solution_scale=1;
 if abs(tstar0)>1
-    tstar0=ceil(abs(tstar0));
-    A_bar=A_bar*abs(tstar0);
-    Aeq=Aeq*abs(tstar0);
-    Q=Q*abs(tstar0^2);
-    M=M*abs(tstar0^2);
-    N=N*abs(tstar0^2);
-    d=d*abs(tstar0);
+    solution_scale=ceil(abs(tstar0));
+    A_bar=A_bar*solution_scale;
+    Aeq=Aeq*solution_scale;
+    Q=Q*solution_scale^2;
+    d=d*solution_scale;
 end
-best_sol=sol/tstar0;
+best_sol=sol/solution_scale;
+
+[M,N] = DC_decomposition(Q,spn);
+
+
+for j=1:size(A_bar,1)
+    [A_bar(j,:),b_bar(j)] = rescale_constraint_by_slack(A_bar(j,:),b_bar(j),A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
+end
+
+
 
 for i=1:max_N
 
@@ -102,7 +110,7 @@ for i=1:max_N
             U=sMat(u,n+1);
             x_0=U(end,1:end-1)';
         else
-            error('DNN lower bound was not solved successfully. Consider increase the mosek tolerance and rety.');
+            error('DNN lower bound was not solved successfully. Consider increasing the MOSEK tolerance and retrying.');
         end
     else
         lb_record(i)=lb_record(i-1);
@@ -121,16 +129,25 @@ for i=1:max_N
 
     tic
 
-    save('badexample.mat',"Q","d","A_bar","b_bar","Aeq","beq","M","N","x0","eps_checkpsd","met_gqp","tol_gqp","n");
-
     [x_kkt] = search_of_kkt_point(Q,d,A_bar,b_bar,Aeq,beq,M,N,x0,eps_checkpsd,met_gqp,tol_gqp,n);
 
-    time_record_kkt(i)=toc;
-
     barx=x_kkt;
-
-
     v=barx'*Q*barx+2*d'*barx;
+
+    if i==1 && v>bestub
+        x0_best=best_sol;
+        if max(A_bar*x0_best-b_bar) >1e-9 || (~isempty(beq) && norm(Aeq*x0_best-beq)>1e-9)
+            x0_best = gurobiqp(eye(n),-x0_best,A_bar,b_bar,Aeq,beq,met_gqp,tol_gqp,n);
+        end
+        x_kkt_best = search_of_kkt_point(Q,d,A_bar,b_bar,Aeq,beq,M,N,x0_best,eps_checkpsd,met_gqp,tol_gqp,n);
+        v_best_kkt=x_kkt_best'*Q*x_kkt_best+2*d'*x_kkt_best;
+        if v_best_kkt<=v
+            barx=x_kkt_best;
+            v=v_best_kkt;
+        end
+    end
+
+    time_record_kkt(i)=toc;
 
 
     if v<bestub
@@ -154,24 +171,24 @@ for i=1:max_N
 
     if abs(bestub)<gap_tol
        nuR=bestub-gap_tol;
-       nuR2=bestub-0.9*gap_tol; 
+       nuR2=bestub-0.9*gap_tol;
        beta=min(1e-7,0.01*gap_tol);
     elseif v>bestub
         nuR2=0.99*bestub+0.01*v;
         beta=min(1e-6,0.1*(v-bestub));
     end
 
- 
+
     tol_mosek_cut=parameters.tol_mosek_cut;
     [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta);
 
     while tol_mosek_cut<=1e-5 && isempty(c)
         tol_mosek_cut=tol_mosek_cut*10;
         fprintf("reducing tol_mosek_cut to %4.2e. \n", tol_mosek_cut);
-        [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta);    
+        [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta);
     end
     if isempty(c)
-        error('fail to generate cut with mosek tolerance %4.2e! try to decrease the error tolerance epsilon\n\n\n', tol_mosek_cut)
+        error('Failed to generate cut with MOSEK tolerance %4.2e. Try decreasing the error tolerance epsilon.\n\n\n', tol_mosek_cut)
     else
         delta=min(eig(S));
         if parameters.verbose==true
@@ -196,6 +213,7 @@ for i=1:max_N
     if cut_lb>=nuR
         A_bar=[A_bar;-c'/norm(c)];
         b_bar=[b_bar; (-1-c'*barx)/norm(c)];
+        [A_bar(end,:),b_bar(end)] = rescale_constraint_by_slack(A_bar(end,:),b_bar(end),A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
     else
         alpha=1;
         A_cut=[A_bar;c'/norm(c)];
@@ -221,9 +239,10 @@ for i=1:max_N
         alpha_record(i)=alpha;
         A_bar=[A_bar;-c'/norm(c)];
         b_bar=[b_bar; (-alpha-c'*barx)/norm(c)];
+        [A_bar(end,:),b_bar(end)] = rescale_constraint_by_slack(A_bar(end,:),b_bar(end),A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
     end
 
-    
+
     if parameters.verbose==true
     fprintf('iteration %5d: bestub=%4.8f, nuR2=%4.8f, nuR=%4.8f, delta=%4.8f,current v=%4.8f, cut_lb=%4.10f, best_lb=%4.10f\n\n\n', i, bestub,nuR2,nuR,delta,v,cut_lb_record(i),bestlb);
     end
@@ -231,7 +250,7 @@ for i=1:max_N
 
 end
 
-best_sol=best_sol*tstar0;
+best_sol=best_sol*solution_scale;
 if i>1
     bestlb=min(min(cut_lb_record(1:i-1)),bestlb);
 end

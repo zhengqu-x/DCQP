@@ -2,7 +2,7 @@
 
 [![MATLAB](https://img.shields.io/badge/MATLAB-R2020a+-blue.svg)](https://www.mathworks.com/products/matlab.html)
 [![License](https://img.shields.io/badge/License-Academic-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-orange.svg)](https://github.com/zhengqu-x/DCQP)
+[![Version](https://img.shields.io/badge/version-1.0.1-orange.svg)](https://github.com/zhengqu-x/DCQP)
 
 ## Overview
 
@@ -30,7 +30,7 @@ where:
 - ✅ **Global Optimization**: Uses cutting plane methods for finding global optima
 - ✅ **Bounded Feasible Region**: Requires bounded constraint sets
 - ✅ **Multiple Solvers**: Integrates with Gurobi and MOSEK for subproblems
-- ✅ **Comprehensive Examples**: Includes 64 benchmark and 140 synthetic test problems
+- ✅ **Comprehensive Examples**: Includes scripts for existing test sets and newly generated synthetic test problems
 - ✅ **Robust Implementation**: Error handling and debugging features
 
 ## Requirements
@@ -38,7 +38,7 @@ where:
 ### Software Dependencies
 - **MATLAB** R2020a or later
 - **Gurobi Optimizer** (recommended version 12.0.1 or later)
-- **MOSEK** (recommended version 11.0.12 or later)
+- **MOSEK** 11.0.30 or earlier with the MATLAB interface configured. Newer MOSEK releases such as 11.2 are not currently supported because DCQP currently uses MOSEK's legacy `mosekopt` MATLAB toolbox interface and semidefinite-programming data structures.
 
 ### System Requirements
 - Memory: At least 4GB RAM (8GB+ recommended for large problems)
@@ -99,7 +99,7 @@ beq = 0.5;
 ```matlab
 % Configure solver parameters
 params = dcqp_default_params();
-params.gap_tolerance = 1e-6;      % Tighter optimality tolerance
+params.gap_tolerance = 1e-5;      % Tighter optimality tolerance
 params.max_iterations = 500;      % More iterations
 params.verbose = true;            % Display progress
 
@@ -108,12 +108,26 @@ params.verbose = true;            % Display progress
 
 ## Algorithm Overview
 
-DCQP employs a **Doubly nonnegative based Cutting plane** approach:
+DCQP employs a **Doubly nonnegative relaxation based Cutting plane** approach:
 
-1. **Cutting Plane Method**: Iteratively adds linear cuts to the original QP problem
+1. **Cutting Plane Method**: Iteratively adds linear cuts to the original QP problem by solving doubly nonnegative SDPs
 2. **Upper Bound Computation**: Uses local search methods for feasible solutions
-3. **Lower Bound Computation**: Solves SDP relaxations for global lower bounds
+3. **Lower Bound Computation**: Solves doubly nonnegative relaxations for global lower bounds
 4. **Convergence**: Terminates when the relative gap between lower and upper bounds is sufficiently small
+
+### Variable Shifting
+
+Before solving, DCQP computes lower bounds `l` for all variables and solves the shifted problem in variables `y = x - l`. The transformed feasible region is nonnegative in `y`, which is needed by the correction step. The shifted problem uses:
+
+```matlab
+Q_shift = Q
+d_shift = Q*l + d
+b_shift = b - A*l
+beq_shift = beq - Aeq*l
+objective_constant = l'*Q*l + 2*d'*l
+```
+
+The solver returns the original variables and objective value by applying `x_opt = y_opt + l` and adding `objective_constant` back to the shifted objective value.
 
 ### Key Algorithmic Parameters
 
@@ -123,14 +137,14 @@ DCQP employs a **Doubly nonnegative based Cutting plane** approach:
 | `max_iterations` | 300 | Maximum number of cutting plane iterations |
 | `max_time` | 3600 | Maximum computation time (seconds) |
 | `dc_regularization` | 1e-5 | DC decomposition regularization parameter |
-| `nb_rounds` | 100 | Number of random initializations for upper bound |
+| `nb_rounds` | 10 | Number of random initializations for upper bound |
 | `do_scaling` | false | Scaling of the objective value |
 
 ## Datasets
 
-### Benchmark Problems
+### Existing Test Sets
 
-The package includes 64 benchmark problems from the literature, organized in four groups:
+Existing test-set `.mat` files are included under `data/existing_testsets/`. These problems are drawn from prior computational studies and are organized in four groups:
 - **qp20_10**: 20 variables, 10 constraints (16 instances)
 - **qp30_15**: 30 variables, 15 constraints (16 instances)  
 - **qp40_20**: 40 variables, 20 constraints (16 instances)
@@ -138,9 +152,9 @@ The package includes 64 benchmark problems from the literature, organized in fou
 
 
 
-### Synthetic Problems
+### Newly Generated Synthetic Problems
 
-The synthetic problems were generated using `legacy/generateinstances_uniform.m` and `legacy/generateinstances_normal.m`. These create 140 nonconvex QPs organized in seven groups (20 instances each):
+Synthetic `.mat` files are included under `data/synthetic/`. These files can also be regenerated using `legacy/generateinstances_uniform.m` and `legacy/generateinstances_normal.m`. The standard synthetic collection contains 140 nonconvex QPs organized in seven groups (20 instances each):
 
 - **qp_n_0_1**: Normal distribution, density 0.1, no equality constraints
 - **qp_n_0_3**: Normal distribution, density 0.3, no equality constraints  
@@ -171,20 +185,20 @@ All synthetic problems have:
 dcqp_demo();  % Runs basic examples with different problem types
 ```
 
-### Benchmark Problems
+### Existing Test Sets
 
 ```matlab
 % Navigate to paper-examples directory first
 cd('paper-examples/');
 
-% Solve benchmark problems from the literature (16 instances in each group)
-solve_benchmark_with_dcqp('qp20_10');  % 20 variables, 10 constraints
-solve_benchmark_with_dcqp('qp30_15');  % 30 variables, 15 constraints
-solve_benchmark_with_dcqp('qp40_20');  % 40 variables, 20 constraints
-solve_benchmark_with_dcqp('qp50_25');  % 50 variables, 25 constraints
+% Solve existing QP test sets from prior computational studies (16 instances in each group)
+solve_existing_testsets_with_dcqp('qp20_10');  % 20 variables, 10 constraints
+solve_existing_testsets_with_dcqp('qp30_15');  % 30 variables, 15 constraints
+solve_existing_testsets_with_dcqp('qp40_20');  % 40 variables, 20 constraints
+solve_existing_testsets_with_dcqp('qp50_25');  % 50 variables, 25 constraints
 ```
 
-### Synthetic Problems
+### Newly Generated Synthetic Problems
 
 ```matlab
 % Navigate to paper-examples directory first
@@ -211,19 +225,19 @@ For performance comparison, the package includes Gurobi-based solvers that attem
 % Navigate to paper-examples directory first
 cd('paper-examples/');
 
-% Benchmark problems with Gurobi (with optional time limit)
-solve_benchmark_with_gurobi('qp20_10');           % Default time limit (1 hour)
-solve_benchmark_with_gurobi('qp30_15', 7200);     % 2 hours time limit
+% Existing test sets with Gurobi (with optional time limit)
+solve_existing_testsets_with_gurobi('qp20_10');           % Default time limit (1 hour)
+solve_existing_testsets_with_gurobi('qp30_15', 7200);     % 2 hours time limit
 
-% Synthetic problems with Gurobi
-solve_synthetic_with_gurobi('qp_n_0_1');          % All instances in group, defalut time limit (1 hour)
+% Newly generated synthetic problems with Gurobi
+solve_synthetic_with_gurobi('qp_n_0_1');          % All instances in group, default time limit (1 hour)
 solve_synthetic_with_gurobi('qp_u_0_1', 5);       % Specific instance only, default time limit (1 hour)
 solve_synthetic_with_gurobi('qp_u_0_1', 5, 1800); % With 30-minute time limit
 ```
 
 ### Output Results
 
-Each benchmark and synthetic run generates detailed results:
+Each existing test-set and synthetic run generates detailed results:
 
 **Console Output**: 
 - **DCQP Solution Summary** for each instance displaying:
@@ -231,13 +245,15 @@ Each benchmark and synthetic run generates detailed results:
   - Solution status message (e.g., "successfully reduced relative gap below 0.0001")
   - Best objective value (scientific notation, e.g., -3.000000e+01)
   - Relative optimality gap (scientific notation, e.g., 4.33e-11)
+  - Original-coordinate relative gap after adding back the shift constant
+  - Variable shift norm and objective constant introduced by the internal shift
   - Computation time in seconds and total number of iterations
 - **Real-time progress** (when `params.verbose = true`): iteration solver details including bounds
 
 **Saved Files**:
-- **Diary files**: `diaryfile-benchmark-dcqp.txt`, `diaryfile-synthetic-dcqp.txt`, etc. containing complete console logs
+- **Diary files**: `diaryfile-existing-testsets-dcqp.txt`, `diaryfile-synthetic-dcqp.txt`, etc. containing complete console logs
 - **Individual result files**: Saved in `paper-examples/testresults/` directory with timestamps (e.g., `gurobi_qp20_10_1_1-2025-10-03_13-18-07.mat`) containing `bestsol` (optimal solution vector) and `info` (performance metrics for that instance)
-- **Summary statistics**: Saved in `paper-examples/summary_results/` directory as `myrecord` matrices containing performance data for all solved instances. Each row represents one problem instance with 6 columns: [optimality_gap, max_constraint_violation, equality_constraint_violation, objective_value, lower_bound, computation_time, number of iterations]. For synthetic problems, this is only saved when all 20 instances in a group are solved together (not for individual instance runs).
+- **Summary statistics**: Saved in `paper-examples/summary_results/` directory as `myrecord` matrices containing performance data for solved instances. Standard DCQP summary rows contain [optimality_gap, max_constraint_violation, equality_constraint_violation, objective_value, lower_bound, computation_time, number of iterations]. Gurobi and equality-elimination helper summaries contain the same fields except number of iterations. For synthetic problems, this is only saved when all 20 instances in a group are solved together (not for individual instance runs).
 
 
 ## Function Reference
@@ -257,7 +273,8 @@ Each benchmark and synthetic run generates detailed results:
 - **`generate_cut_dnn(Q, d, A, b, Aeq, beq, m, n, nuR, barx, x0, tol_mosek, beta)`**: Generate doubly nonnegative cutting plane
 - **`lower_bound_dnn(Q, d, A, b, Aeq, beq, tol_mosek, m, n)`**: Compute doubly nonnegative relaxation lower bound
 - **`check_kkt_conditions(x, Q, d, A, b, Aeq, beq)`**: Verify KKT conditions
-- **`qpsolver(H, f, A, b, Aeq, beq, method, tolerance, n)`**: Generic QP solver interface
+- **`qpsolver(Q, d, A, b, Aeq, beq, lb, ub, sol, parameters)`**: Internal cutting-plane solver used by `dcqp_solve`
+- **`rescale_constraint_by_slack(a_row, b_value, A, b, Aeq, beq, met_glp, tol_glp)`**: Rescale an inequality row using its maximum feasible slack
 
 ## Output Structure
 
@@ -266,17 +283,20 @@ The solver returns detailed information about the solution:
 ```matlab
 info = struct(
     'status',      'successfully reduced relative gap below 0.0001',  % Solution status
-    'gap',         4.33e-11,        % Relative optimality gap
+    'gap',         4.33e-11,        % Gap measured in shifted solver coordinates
+    'original_gap',4.33e-11,        % Naive relative gap after adding objective constant
     'iterations',  1,               % Number of iterations
     'time',        0.19,            % Total computation time (seconds)
     'upper_bound', -30.0,           % Best upper bound found
     'lower_bound', -30.0,           % Best lower bound achieved  
-    'scaling',     1                % Problem scaling factor
+    'scaling',     1,               % Problem scaling factor
+    'variable_shift', zeros(n,1),   % Internal shift y = x - variable_shift
+    'objective_constant', 0         % Constant added back to shifted objective values
 );
 ```
 
 ### Status Codes
-- `'successfully reduced relative gap below X'`: Solution found within gap tolerance X
+- `'successfully reduced relative gap below X'`: Solution found within relative gap tolerance X
 - `'time_limit reached'`: Maximum computation time exceeded
 - `'iteration_limit reached'`: Maximum number of iterations reached
 - `'not solved'`: Algorithm terminated without meeting convergence criteria
@@ -290,6 +310,8 @@ info = struct(
 3. **Mandatory inequalities**: Inequality constraints A*x ≤ b cannot be empty
 4. **No integer variables**: Continuous variables only
 
+Before solving, DCQP computes variable lower bounds and internally shifts the problem to `y = x - variable_shift`, so that the correction step is applied on a nonnegative feasible set. Returned solutions and objective values are converted back to the original variables.
+
 ### Performance Considerations
 - **Problem size**: Most efficient for problems with n ≤ 100 variables
 - **Constraint density**: Performance degrades with very dense constraint matrices
@@ -298,7 +320,6 @@ info = struct(
 ### Troubleshooting
 - **Unbounded problems**: Verify that the feasible region is bounded
 - **Convergence issues**: Try increasing `gap_tolerance` or `max_iterations`
-- **Memory errors**: Reduce `nb_rounds` for small problems
 - **Solver failures**: Enable `save_failed_instances` for debugging
 
 ## File Structure
@@ -311,13 +332,14 @@ DCQP/
 ├── dcqp_startup.m            # Environment setup
 ├── dcqp_version.m            # Version information
 ├── dcqp_check_input.m        # Input validation
-├── data/                     # Test problems
-│   ├── benchmark/            # 64 literature benchmark problems
-│   └── synthetic/            # Synthetic test instances (140 problems generated using legacy/generateinstances_uniform.m and legacy/generateinstances_normal.m)
+├── data/                     # Existing test-set and synthetic .mat datasets
+│   ├── existing_testsets/    # Existing test-set .mat files
+│   └── synthetic/            # Newly generated synthetic .mat files
 ├── utils/                    # Utility functions
 │   ├── DC_decomposition.m    # DC decomposition
 │   ├── compute_ub.m          # Upper bound computation
-│   ├── qpsolver.m            # QP solver interface
+│   ├── qpsolver.m            # Internal cutting-plane solver
+│   ├── rescale_constraint_by_slack.m # Constraint row rescaling helper
 │   └── ...                   # Other utilities  
 ├── paper-examples/           # Reproducible experiments
 ├── legacy/                   # Legacy functions
@@ -351,20 +373,26 @@ If you use DCQP in your research, please cite the following paper:
 
 ## License
 
-This software is distributed under an Academic License. See `LICENSE` file for details.
+This software is distributed under an Academic License for academic research use only. Commercial use is prohibited without explicit written permission from the copyright holders. See `LICENSE` for details.
 
 ## Support and Issues
 
 - **Documentation**: See function help: `help dcqp_solve`
-- **Examples**: Run `dcqp_demo()` for working examples
+- **Examples**: Run `dcqp_demo()` or use the scripts in `paper-examples/`
 - **Issues**: Report bugs and feature requests on GitHub
 - **Contact**: zhengqu@szu.edu.cn
 
 ## Version History
 
+- **v1.0.1** (2026-06-03): Maintenance update
+  - Added internal variable shifting for nonnegative correction coordinates
+  - Added constraint-row rescaling helper for cutting-plane subproblems
+  - Fixed solution rescaling logic in the internal solver
+  - Updated documentation and repository metadata
+
 - **v1.0.0** (2025-10-03): Initial release
   - Core DCQP algorithm implementation
-  - Benchmark and synthetic test examples
+  - Existing test-set and synthetic test examples
   - Comprehensive documentation
 
 ---

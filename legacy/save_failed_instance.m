@@ -22,7 +22,7 @@ function save_failed_instance(Q, d, A, b, Aeq, beq, params, error_info, solve_ti
 % OUTPUT:
 %   Saves a .mat file containing all problem data and error information
 
-% Copyright (c) 2025, [Your Institution]
+% Copyright (c) 2025
 % All rights reserved.
 
 try

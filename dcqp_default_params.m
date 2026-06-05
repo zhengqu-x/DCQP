@@ -15,18 +15,19 @@ function params = dcqp_default_params()
 %     .max_iterations          - Maximum number of iterations (300)
 %     .gap_tolerance          - Optimality gap tolerance (1e-4)
 %     .max_time              - Maximum computation time in seconds (3600)
-%     .verbose               - Display progress information (true)
+%     .display_summary       - Display final solution summary (true)
+%     .verbose               - Display iteration progress information (false)
 %     .robust_mode           - Continue on errors when possible (false)
 %
 %   Solver Tolerances:
-%     .mosek_tolerance       - MOSEK SDP solver tolerance (1e-9)
+%     .mosek_tolerance       - MOSEK SDP solver tolerance (1e-8)
 %     .gurobi_qp_tolerance   - Gurobi QP solver tolerance (1e-9)
 %     .gurobi_lp_tolerance   - Gurobi LP solver tolerance (1e-9)
 %
 %   Algorithm Parameters:
 %     .dc_regularization     - DC decomposition regularization (1e-5)
 %     .psd_check_tolerance   - PSD checking tolerance (1e-8)
-%     .initial_sampling_rounds - Random starts for upper bound (1)
+%     .nb_rounds             - Random starts for upper bound (10)
 %
 %   Solver Methods:
 %     .gurobi_lp_method      - Gurobi LP method (1=dual simplex)
@@ -51,7 +52,7 @@ function params = dcqp_default_params()
 %
 % SEE ALSO: dcqp_solve, qpsolver
 
-% Copyright (c) 2025, [Your Institution]
+% Copyright (c) 2025
 % All rights reserved.
 
 params = struct();
@@ -79,7 +80,7 @@ params.gurobi_lp_tolerance = 1e-9;     % Gurobi LP solver tolerance
 % =================================================================
 params.dc_regularization = 1e-5;       % DC decomposition regularization (spn)
 params.psd_check_tolerance = 1e-8;     % Tolerance for PSD checking (eps_checkpsd)
-params.nb_rounds = 100;    % Number of random initializations
+params.nb_rounds = 10;    % Number of random initializations
 params.eta=0.9;
 
 % =================================================================

@@ -11,7 +11,7 @@ end
 
 
 
-diary diaryfile-synthetic-dcqp.txt
+diary diaryfile-synthetic-gurobi.txt
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

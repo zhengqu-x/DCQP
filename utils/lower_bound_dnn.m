@@ -9,7 +9,7 @@ function [lb,sdp_status,S,res] = lower_bound_dnn(Q,d,A,b,Aeq,beq,tol_mosek,m,n)
 % Q, d             Parameters of the quadratic objective function
 % A, b             Parameters of the inequality constraint A x <= b
 % Aeq, beq         Equality constraints: Aeq x = beq
-% tol_mosek        Accuracy tolerence used in MOSEK
+% tol_mosek        Accuracy tolerance used in MOSEK
 % m                Size(A,1)
 % n                Size(A,2)
 %

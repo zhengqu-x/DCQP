@@ -11,12 +11,12 @@ function ver_info = dcqp_version()
 %              .description - Package description
 
 ver_info = struct();
-ver_info.version = '1.0.0';
-ver_info.date = '2025-10-03';
+ver_info.version = '1.0.1';
+ver_info.date = '2026-06-03';
 ver_info.description = 'Doubly Nonnegative based Cutting Plane method for Quadratic Programming';
 ver_info.authors = 'Zheng Qu, Defeng Sun, Jintao Xu';
 ver_info.license = 'Academic License';
-ver_info.url = 'https://github.com/your-repo/DCQP';
+ver_info.url = 'https://github.com/zhengqu-x/DCQP';
 
 if nargout == 0
     % Display version information when called without output
@@ -25,6 +25,7 @@ if nargout == 0
     fprintf('Date: %s\n', ver_info.date);
     fprintf('Description: %s\n', ver_info.description);
     fprintf('License: %s\n', ver_info.license);
+    fprintf('URL: %s\n', ver_info.url);
     fprintf('===================\n\n');
     clear ver_info;
 end
