@@ -153,7 +153,7 @@ if all_deps_ok
             return;
         end
         
-        [x, fval, info] = dcqp_solve(Q, d, A, b, [], [], params);
+        [x, ~, info] = dcqp_solve(Q, d, A, b, [], [], params);
         
         % Check if we got a reasonable result
         if info.gap<=params.gap_tolerance && all(isfinite(x)) && all(A*x <= b + 1e-6)
