@@ -65,17 +65,17 @@ matlab_version = version('-release');
 matlab_year = str2double(matlab_version(1:4));
 fprintf('\nMATLAB version: %s', matlab_version);
 if matlab_year >= 2020
-    fprintf(' ✓\n');
+    fprintf(' OK\n');
 else
-    fprintf(' ⚠️  (Recommended: R2020a or later)\n');
+    fprintf(' WARNING (Recommended: R2020a or later)\n');
 end
 
 % Check for required toolboxes
 fprintf('\nChecking MATLAB toolboxes...\n');
 if license('test', 'Optimization_Toolbox')
-    fprintf('  Optimization Toolbox: ✓\n');
+    fprintf('  Optimization Toolbox: OK\n');
 else
-    fprintf('  Optimization Toolbox: ✗ (Required)\n');
+    fprintf('  Optimization Toolbox: MISSING (Required)\n');
 end
 
 % Check for third-party solvers
@@ -84,10 +84,10 @@ fprintf('\nChecking third-party solvers...\n');
 % Check MOSEK
 try
     mosekopt('version');
-    fprintf('  MOSEK: ✓\n');
+    fprintf('  MOSEK: OK\n');
     mosek_available = true;
 catch
-    fprintf('  MOSEK: ✗ (Required for SDP computations)\n');
+    fprintf('  MOSEK: MISSING (Required for SDP computations)\n');
     mosek_available = false;
 end
 
@@ -101,20 +101,20 @@ try
     params = struct();
     params.OutputFlag = 0;
     gurobi(model, params);
-    fprintf('  Gurobi: ✓\n');
+    fprintf('  Gurobi: OK\n');
     gurobi_available = true;
 catch
-    fprintf('  Gurobi: ✗ (Required for LP/QP subproblems)\n');
+    fprintf('  Gurobi: MISSING (Required for LP/QP subproblems)\n');
     gurobi_available = false;
 end
 
 % Summary of requirements
 fprintf('\nDependency status:\n');
 if mosek_available && gurobi_available
-    fprintf('  All required solvers available ✓\n');
+    fprintf('  All required solvers available\n');
     all_deps_ok = true;
 else
-    fprintf('  Missing required solvers ✗\n');
+    fprintf('  Missing required solvers\n');
     all_deps_ok = false;
     
     fprintf('\nTo install missing dependencies:\n');
@@ -135,10 +135,10 @@ if all_deps_ok
         d = [-1; -1];
         
         % Create bounded feasible region: 0 <= x <= 2
-        A = [-1, 0;    % -x₁ <= 0  → x₁ >= 0
-             0, -1;    % -x₂ <= 0  → x₂ >= 0  
-             1, 0;     %  x₁ <= 2
-             0, 1];    %  x₂ <= 2
+        A = [-1, 0;    % -x1 <= 0  -> x1 >= 0
+             0, -1;    % -x2 <= 0  -> x2 >= 0
+             1, 0;     %  x1 <= 2
+             0, 1];    %  x2 <= 2
         b = [0; 0; 2; 2];
         
         % Validate the test problem before using it
@@ -157,14 +157,14 @@ if all_deps_ok
         
         % Check if we got a reasonable result
         if info.gap<=params.gap_tolerance && all(isfinite(x)) && all(A*x <= b + 1e-6)
-            fprintf('  Basic test: ✓ (solved in %.2f seconds)\n', info.time);
+            fprintf('  Basic test: OK (solved in %.2f seconds)\n', info.time);
         else
-            fprintf('  Basic test: ⚠️  (unexpected result: x=[%.3f,%.3f], status=%s)\n', ...
+            fprintf('  Basic test: WARNING (unexpected result: x=[%.3f,%.3f], status=%s)\n', ...
                     x(1), x(2), info.status);
         end
         
     catch ME
-        fprintf('  Basic test: ✗ (error: %s)\n', ME.message);
+        fprintf('  Basic test: FAILED (error: %s)\n', ME.message);
     end
 else
     fprintf('\nSkipping functionality test (missing dependencies)\n');
@@ -186,9 +186,9 @@ fprintf('For help: type ''help dcqp_solve'' or ''doc dcqp_solve''\n');
 % Display final status
 fprintf('\n=== Initialization Complete ===\n');
 if all_deps_ok
-    fprintf('Status: Ready to use ✓\n');
+    fprintf('Status: Ready to use\n');
 else
-    fprintf('Status: Needs setup ⚠️\n');
+    fprintf('Status: Needs setup\n');
 end
 
 fprintf('DCQP solver initialized successfully!\n\n');
