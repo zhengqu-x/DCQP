@@ -1,4 +1,4 @@
-function [c,val,sdp_status,S] = generate_cut_dnn(Q,d,A,b,Aeq,beq,m,n,nuR,barx,x0,tol_mosek,beta)
+function [c,val,sdp_status,S] = generate_cut_dnn(Q,d,A,b,Aeq,beq,m,n,nuR,barx,x0,tol_mosek,beta,rho)
 
 % ======================================================================= %
 % Generate cut for the following problem
@@ -26,6 +26,7 @@ function [c,val,sdp_status,S] = generate_cut_dnn(Q,d,A,b,Aeq,beq,m,n,nuR,barx,x0
 % x0               x_0
 % tol_mosek        Tolerance parameter used in MOSEK
 % beta             Beta
+% rho              min_{x in P} (Q*barx+d)'*(x-barx)
 %
 % OUTPUT
 %
@@ -164,6 +165,18 @@ if isempty(strfind(res.rcodestr, 'MSK_RES_ERR'))
         %diff=norm(T_sol-T_sol2);
         %fprintf('T difference norm=%4.10f\n\n',diff);
         S=sMat(sVec(barQ)+Rq+[M_c -M_T M_U]*sol2,n+1);
+
+        % The multiplier (Q*barx+d)'*(x-barx)+beta is bounded below by
+        % rho+beta. Shift a negative lower bound into S so that the
+        % remaining multiplier is nonnegative over the whole region.
+        gamma=min(rho+beta,0);
+        if gamma<0
+            e=zeros(n+1,1);
+            e(end)=1;
+            h=[-c;1+c'*barx];
+            S=S+0.5*gamma*(e*h'+h*e');
+            S=(S+S')/2;
+        end
 
     elseif strcmp(solsta, 'MSK_SOL_STA_DUAL_INFEASIBLE_CER')
         fprintf('Dual infeasibility certificate found.');

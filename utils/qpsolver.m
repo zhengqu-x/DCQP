@@ -105,7 +105,7 @@ for i=1:max_N
              if parameters.verbose==true
                 fprintf('compute lower bound, minimal eigenvalue of S=%4.2e\n\n\n',delta);
              end
-            lb_record(i)=lb+(1+tstar^2)*min(delta,0);
+            lb_record(i)=lb+delta+tstar^2*min(delta,0);
             u=res.sol.itr.doty;
             U=sMat(u,n+1);
             x_0=U(end,1:end-1)';
@@ -129,7 +129,7 @@ for i=1:max_N
 
     tic
 
-    [x_kkt] = search_of_kkt_point(Q,d,A_bar,b_bar,Aeq,beq,M,N,x0,eps_checkpsd,met_gqp,tol_gqp,n);
+    [x_kkt,rho] = search_of_kkt_point(Q,d,A_bar,b_bar,Aeq,beq,M,N,x0,eps_checkpsd,met_gqp,tol_gqp,n);
 
     barx=x_kkt;
     v=barx'*Q*barx+2*d'*barx;
@@ -139,10 +139,11 @@ for i=1:max_N
         if max(A_bar*x0_best-b_bar) >1e-9 || (~isempty(beq) && norm(Aeq*x0_best-beq)>1e-9)
             x0_best = gurobiqp(eye(n),-x0_best,A_bar,b_bar,Aeq,beq,met_gqp,tol_gqp,n);
         end
-        x_kkt_best = search_of_kkt_point(Q,d,A_bar,b_bar,Aeq,beq,M,N,x0_best,eps_checkpsd,met_gqp,tol_gqp,n);
+        [x_kkt_best,rho_best] = search_of_kkt_point(Q,d,A_bar,b_bar,Aeq,beq,M,N,x0_best,eps_checkpsd,met_gqp,tol_gqp,n);
         v_best_kkt=x_kkt_best'*Q*x_kkt_best+2*d'*x_kkt_best;
         if v_best_kkt<=v
             barx=x_kkt_best;
+            rho=rho_best;
             v=v_best_kkt;
         end
     end
@@ -180,12 +181,12 @@ for i=1:max_N
 
 
     tol_mosek_cut=parameters.tol_mosek_cut;
-    [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta);
+    [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta,rho);
 
     while tol_mosek_cut<=1e-5 && isempty(c)
         tol_mosek_cut=tol_mosek_cut*10;
         fprintf("reducing tol_mosek_cut to %4.2e. \n", tol_mosek_cut);
-        [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta);
+        [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta,rho);
     end
     if isempty(c)
         error('Failed to generate cut with MOSEK tolerance %4.2e. Try decreasing the error tolerance epsilon.\n\n\n', tol_mosek_cut)
@@ -206,7 +207,7 @@ for i=1:max_N
 
     [~,tstar_cut,~]=gurobilp(-ones(n,1),A_cut,b_cut,Aeq,beq,[],[],met_glp,tol_glp);
 
-    cut_lb=nuR2+(1+tstar_cut^2)*min(delta,0);
+    cut_lb=nuR2+delta+tstar_cut^2*min(delta,0);
 
     cut_lb_record(i)=cut_lb;
 
@@ -223,7 +224,7 @@ for i=1:max_N
         if parameters.verbose==true
             fprintf('cut lower bound computing: minimal eigenvalue of S=%4.2e\n\n\n',delta_cut);
         end
-        lb_cut2=lb_cut+(1+tstar_cut^2)*min(delta_cut,0);
+        lb_cut2=lb_cut+delta_cut+tstar_cut^2*min(delta_cut,0);
         if lb_cut2<nuR
             alpha=0.9;
             A_cut=[A_bar;c'/norm(c)];
@@ -233,7 +234,7 @@ for i=1:max_N
             if parameters.verbose==true
                 fprintf('reduced alpha, cut lower bound recomputing: minimal eigenvalue of S=%4.2e\n\n\n',delta_cut);
             end
-            lb_cut2=lb_cut+(1+tstar_cut^2)*min(delta_cut,0);
+            lb_cut2=lb_cut+delta_cut+tstar_cut^2*min(delta_cut,0);
         end
         cut_lb_record(i)=lb_cut2;
         alpha_record(i)=alpha;

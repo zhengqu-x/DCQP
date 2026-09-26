@@ -1,4 +1,4 @@
-function [x_kkt] = search_of_kkt_point( ...
+function [x_kkt,rho] = search_of_kkt_point( ...
     Q,d,A,b,Aeq,beq,M,N,x_0,epsilon,met_gqp,tol_gqp,n)
 
 % ======================================================================= %
@@ -21,6 +21,7 @@ function [x_kkt] = search_of_kkt_point( ...
 %
 % OUTPUT             
 % x_kkt            x_kkt
+% rho              min_{x in P} (Q*x_kkt+d)'*(x-x_kkt)
 % ======================================================================= %
 
 x_ite = x_0;
@@ -63,6 +64,19 @@ while iteration_number<=1000
     end   
     x_ite = x_bar;
   
+end
+
+% Compute the signed minimum of the objective linearization only when the
+% caller requests it, so existing one-output callers do not solve an extra LP.
+rho=[];
+if nargout>1
+    g=Q*x_kkt+d;
+    [~,minimum_value,rho_status]=gurobilp(full(g),A,b,Aeq,beq,[],[],met_gqp,tol_gqp);
+    if rho_status~=1 || isempty(minimum_value) || ~isfinite(minimum_value)
+        error('search_of_kkt_point:LinearizationLP', ...
+            'Could not minimize the objective linearization over the current region.');
+    end
+    rho=minimum_value-g'*x_kkt;
 end
 
 end
