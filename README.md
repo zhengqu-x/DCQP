@@ -6,7 +6,7 @@
 
 ## Overview
 
-DCQP is a MATLAB package for solving **nonconvex quadratic programming** problems using a doubly nonnegative relaxation and cutting plane approach. The solver is specifically designed for problems where traditional convex optimization methods fail due to indefinite Hessian matrices.
+DCQP is a MATLAB package for solving **nonconvex quadratic programming** problems using a doubly nonnegative relaxation and cutting plane approach.
 
 ### Problem Formulation
 
@@ -27,11 +27,11 @@ where:
 ### Key Features
 
 - ✅ **Nonconvex QP Solver**: Handles indefinite Hessian matrices with negative eigenvalues
-- ✅ **Global Optimization**: Uses cutting plane methods for finding global optima
+- ✅ **Global Optimality Certificate**: Provides a certificate of global optimality within a specified tolerance using cutting-plane methods
 - ✅ **Bounded Feasible Region**: Requires bounded constraint sets
 - ✅ **Multiple Solvers**: Integrates with Gurobi and MOSEK for subproblems
-- ✅ **Comprehensive Examples**: Includes scripts to reproduce the experiments in the paper
-- ✅ **Robust Implementation**: Error handling and debugging features
+- ✅ **Comprehensive Examples**: Includes scripts to reproduce the experiments in the associated paper
+
 
 ## Requirements
 
@@ -40,9 +40,6 @@ where:
 - **Gurobi Optimizer** (recommended version 12.0.1 or later)
 - **MOSEK** 11.0.30 or earlier with the MATLAB interface configured. Newer MOSEK releases such as 11.2 are not currently supported because DCQP currently uses MOSEK's legacy `mosekopt` MATLAB toolbox interface and semidefinite-programming data structures.
 
-### System Requirements
-- Memory: At least 4GB RAM (8GB+ recommended for large problems)
-- Operating System: Windows, macOS, or Linux
 
 ## Installation
 
@@ -115,7 +112,7 @@ fprintf('status = %s\n',info.status);
 
 ### Variable bounds
 
-Variable bounds must currently be included in `A*x <= b`. For example,
+Variable bounds must be included in `A*x <= b`. For example,
 to impose `lb <= x <= ub`:
 
 ```matlab
@@ -127,8 +124,7 @@ b = [b; ub(:); -lb(:)];
 ### Setting options
 
 Always begin with the complete default structure, then override individual
-fields. A partial structure such as `struct('max_time',600)` is not a valid
-direct input to `dcqp_solve` because the solver requires the other fields too.
+fields.
 
 ```matlab
 params = dcqp_default_params();
@@ -198,14 +194,6 @@ The following are all fields returned by `dcqp_default_params()`.
 | `gurobi_lp_method` | `1` | Gurobi LP method: `0` primal simplex, `1` dual simplex, `2` barrier. |
 | `gurobi_qp_method` | `2` | Gurobi QP method: `-1` automatic, `0` primal simplex, `1` dual simplex, `2` barrier. |
 
-#### Internal or reserved fields
-
-| Parameter | Default | Description |
-|---|---:|---|
-| `scaling` | `1` | Internal objective scale. Leave this at `1`; `dcqp_solve` updates it when `do_scaling=true`. |
-| `lower_bounds` | `[]` | Reserved and currently unused. Encode lower bounds in `A,b`. |
-| `upper_bounds` | `[]` | Reserved and currently unused. Encode upper bounds in `A,b`. |
-
 ## Datasets
 
 ### Existing Test Sets
@@ -262,109 +250,16 @@ generation and preparation functions are collected under `data/generators/`.
 ## Examples and Demos
 
 ### Run the Demo
+
 ```matlab
 dcqp_demo();  % Runs basic examples with different problem types
 ```
 
-### Existing Test Sets
+### Reproduce the Paper Experiments
 
-```matlab
-% Navigate to paper-examples directory first
-cd('paper-examples/');
-
-% Solve existing QP test sets from prior computational studies (16 instances in each group)
-solve_existing_testsets_with_dcqp('qp20_10');  % 20 variables, 10 constraints
-solve_existing_testsets_with_dcqp('qp30_15');  % 30 variables, 15 constraints
-solve_existing_testsets_with_dcqp('qp40_20');  % 40 variables, 20 constraints
-[summary,result_folder] = solve_existing_testsets_with_dcqp('qp50_25');
-```
-
-### Newly Generated Synthetic Problems
-
-```matlab
-% Navigate to paper-examples directory first
-cd('paper-examples/');
-
-% Test on randomly generated problems (20 instances in each group)
-solve_synthetic_with_dcqp('qp_n_0_1');   % density 0.1, normal distribution, no equality constraint
-solve_synthetic_with_dcqp('qp_n_0_3');   % density 0.3, normal distribution, no equality constraint
-solve_synthetic_with_dcqp('qp_n_0_9');   % density 0.9, normal distribution, no equality constraint
-solve_synthetic_with_dcqp('qp_u_0_1');   % density 0.1, uniform distribution, no equality constraint
-solve_synthetic_with_dcqp('qp_u_0_3');   % density 0.3, uniform distribution, no equality constraint
-solve_synthetic_with_dcqp('qp_u_0_9');   % density 0.9, uniform distribution, no equality constraint
-[summary,result_folder] = solve_synthetic_with_dcqp('qp_u_25_1');
-
-% Test specific instance in a group
-[summary,result_folder] = solve_synthetic_with_dcqp('qp_n_0_1',5);
-```
-
-### Structured Paper Examples
-
-Each function accepts `"all"`, numeric indices, or one or more instance IDs.
-An optional structure controls the time limit and solver settings.
-
-```matlab
-solve_inexactStQP_with_dcqp("all");
-solve_boxQP_with_dcqp(1:10);
-solve_manyLocalMinima_with_dcqp("all");
-
-solve_inexactStQP_with_gurobi(1, struct('max_time', 600));
-solve_boxQP_with_gurobi("all");
-solve_manyLocalMinima_with_gurobi("all");
-```
-
-The structured DCQP wrappers default to the settings used for the frozen
-120-instance run: `konnofirst=true`, a known-solution start when available,
-objective scaling, `gap_tolerance=1e-4`, and
-`accept_cut_below_threshold=false`.
-
-### Comparison With Gurobi
-
-For performance comparison, the package includes Gurobi-based solvers that attempt to solve the same nonconvex QP problems:
-
-```matlab
-% Navigate to paper-examples directory first
-cd('paper-examples/');
-
-% Existing test sets with Gurobi (with optional time limit)
-solve_existing_testsets_with_gurobi('qp20_10');
-solve_existing_testsets_with_gurobi('qp30_15',"all",struct('max_time',7200));
-
-% Newly generated synthetic problems with Gurobi
-solve_synthetic_with_gurobi('qp_n_0_1');
-solve_synthetic_with_gurobi('qp_u_0_1',5);
-solve_synthetic_with_gurobi('qp_u_0_1',5,struct('max_time',1800));
-```
-
-### Output Results
-
-Every paper-example runner uses the same result schema and writes below:
-
-```text
-paper-examples/results/
-├── existing-tests/<group>/<solver>_<start-time>/
-├── synthetic/<group>/<solver>_<start-time>/
-└── structured/<family>/<solver>_<start-time>/
-```
-
-**Console Output**: 
-- **DCQP Solution Summary** for each instance displaying:
-  - Instance name and problem dimensions (n variables, m inequality constraints, meq equality constraints)
-  - Solution status message (e.g., "successfully reduced relative gap below 0.0001")
-  - Best objective value (scientific notation, e.g., -3.000000e+01)
-  - Relative optimality gap (scientific notation, e.g., 4.33e-11)
-  - Original-coordinate relative gap after adding back the shift constant
-  - Variable shift norm and objective constant introduced by the internal shift
-  - Computation time in seconds and total number of iterations
-- **Real-time progress** (when `params.verbose = true`): iteration solver details including bounds
-
-Each timestamped run contains `summary.csv`, `summary.mat`, `run.log`, and
-one MAT file per instance. The common named columns include initial and final
-relative gaps, time, bounds, iterations, number of added DCQP cuts, and
-feasibility violation. Detailed DCQP iteration records are stored in
-`raw.diagnostics` inside the per-instance MAT file; no separate `testresults/`
-or `summary_results/` directory is created. See `paper-examples/README.md` for
-the complete schema and calling conventions.
+The existing-test, synthetic, and structured experiment runners—including
+DCQP/Gurobi comparisons, selection syntax, and result-file documentation—are
+described in [`paper-examples/README.md`](paper-examples/README.md).
 
 
 ## Function Reference

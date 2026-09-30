@@ -38,10 +38,6 @@ function params = dcqp_default_params()
 %     .gurobi_lp_method      - Gurobi LP method (1=dual simplex)
 %     .gurobi_qp_method      - Gurobi QP method (2=barrier)
 %
-%   Problem Bounds:
-%     .lower_bounds          - Variable lower bounds ([] = -inf)
-%     .upper_bounds          - Variable upper bounds ([] = +inf)
-%
 % EXAMPLES:
 %   % Use default parameters
 %   params = dcqp_default_params();
@@ -49,11 +45,6 @@ function params = dcqp_default_params()
 %   % Modify tolerance
 %   params = dcqp_default_params();
 %   params.gap_tolerance = 1e-6;
-%
-%   % Set variable bounds
-%   params = dcqp_default_params();
-%   params.lower_bounds = zeros(n, 1);  % Non-negative variables
-%   params.upper_bounds = ones(n, 1);   % Upper bound of 1
 %
 % SEE ALSO: dcqp_solve, qpsolver
 
@@ -97,12 +88,6 @@ params.known_solution=[];             % Use directly; skip random initialization
 % =================================================================
 params.gurobi_lp_method = 1;           % 0=primal, 1=dual simplex, 2=barrier
 params.gurobi_qp_method = 2;           % -1=auto, 0=primal simplex, 1=dual simplex, 2=barrier
-
-% =================================================================
-% Variable Bounds (optional)
-% =================================================================
-params.lower_bounds = [];              % Variable lower bounds ([] = -inf)
-params.upper_bounds = [];              % Variable upper bounds ([] = +inf)
 
 % =================================================================
 % Internal Parameters (usually not modified by users)
