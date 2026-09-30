@@ -109,7 +109,7 @@ fprintf('relative gap = %.2e\n',info.gap);
 fprintf('status = %s\n',info.status);
 ```
 
-For the existing-test, synthetic, and structured paper experiments, including
+To reproduce experiments in the associated paper, including
 DCQP/Gurobi comparisons and result-file documentation, see
 [`paper-examples/README.md`](paper-examples/README.md).
 
