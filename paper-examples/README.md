@@ -8,6 +8,64 @@ families in the paper:
 - structured instances: BoxQP, inexact StQP, and many-local-minima StQP
   (Section 7).
 
+## Datasets
+
+### Existing test sets
+
+Existing test-set `.mat` files are included under `../data/existing_testsets/`.
+These problems are drawn from prior computational studies and are organized
+in four groups:
+
+- **qp20_10**: 20 variables, 10 constraints (16 instances)
+- **qp30_15**: 30 variables, 15 constraints (16 instances)
+- **qp40_20**: 40 variables, 20 constraints (16 instances)
+- **qp50_25**: 50 variables, 25 constraints (16 instances)
+
+### Newly generated synthetic problems
+
+Synthetic `.mat` files are included under `../data/synthetic/`. All
+distributed data generators are collected under `../data/generators/`; the
+legacy synthetic scripts are `generateinstances_uniform.m` and
+`generateinstances_normal.m`. The standard synthetic collection contains 140
+nonconvex QPs organized in seven groups (20 instances each):
+
+- **qp_n_0_1**: Normal distribution, density 0.1, no equality constraints
+- **qp_n_0_3**: Normal distribution, density 0.3, no equality constraints
+- **qp_n_0_9**: Normal distribution, density 0.9, no equality constraints
+- **qp_u_0_1**: Uniform distribution, density 0.1, no equality constraints
+- **qp_u_0_3**: Uniform distribution, density 0.3, no equality constraints
+- **qp_u_0_9**: Uniform distribution, density 0.9, no equality constraints
+- **qp_u_25_1**: Uniform distribution, density 0.1, 25 equality constraints
+
+All synthetic problems have:
+
+- **Problem size**: 100 variables, 51 inequality constraints
+- **Hessian construction**: Q = L₁ᵀL₁ - L₂ᵀL₂, where L₁ and L₂ are random
+  sparse matrices (25×100 each) with entries drawn from uniform or normal
+  distributions
+- **Constraint generation**:
+  - First constraint: A₁ = [1, 1, ..., 1] (sum constraint)
+  - Remaining constraints: A₂₋₅₁ are sparse random matrices with the specified
+    density
+  - Right-hand side: b = A·x₀ + 0.1·rand(), where x₀ is a feasible point
+  - Equality constraints: Aeq (when present) is generated similarly, with
+    beq = Aeq·x₀
+- **Variable bounds**: 0 ≤ x ≤ 1
+- **Feasible interior point**: x₀ is a normalized random vector, ensuring that
+  all constraints are satisfiable
+
+### Structured paper examples
+
+The structured examples are stored under `../data/structured/`:
+
+- `inexact_stqp/`: 120 inexact StQP instances
+- `boxqp/`: 120 structured BoxQP instances
+- `many_local_minima/`: 15 StQPs with many local minima
+
+See [`../data/structured/README.md`](../data/structured/README.md) for
+construction details. All MATLAB generation and preparation functions are
+collected under `../data/generators/`.
+
 ## Unified result layout
 
 Every runner writes the same named summary columns and the same per-instance
