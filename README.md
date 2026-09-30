@@ -109,6 +109,9 @@ fprintf('relative gap = %.2e\n',info.gap);
 fprintf('status = %s\n',info.status);
 ```
 
+For the existing-test, synthetic, and structured paper experiments, including
+DCQP/Gurobi comparisons and result-file documentation, see
+[`paper-examples/README.md`](paper-examples/README.md).
 
 ### Variable bounds
 
@@ -193,41 +196,6 @@ The following are all fields returned by `dcqp_default_params()`.
 | `gurobi_lp_tolerance` | `1e-9` | Optimality tolerance passed to Gurobi LP subproblems. |
 | `gurobi_lp_method` | `1` | Gurobi LP method: `0` primal simplex, `1` dual simplex, `2` barrier. |
 | `gurobi_qp_method` | `2` | Gurobi QP method: `-1` automatic, `0` primal simplex, `1` dual simplex, `2` barrier. |
-
-## Examples and Demos
-
-### Run the Demo
-
-```matlab
-dcqp_demo();  % Runs basic examples with different problem types
-```
-
-### Reproduce the Paper Experiments
-
-The existing-test, synthetic, and structured experiment runners—including
-DCQP/Gurobi comparisons, selection syntax, and result-file documentation—are
-described in [`paper-examples/README.md`](paper-examples/README.md).
-
-
-## Function Reference
-
-### Main Functions
-
-- **`dcqp_solve(Q, d, A, b, Aeq, beq, params)`**: Main solver function
-- **`dcqp_default_params()`**: Get default algorithm parameters
-- **`dcqp_startup()`**: Initialize the DCQP environment
-- **`dcqp_version()`**: Display version information
-- **`dcqp_demo()`**: Run demonstration examples
-
-### Utility Functions
-
-- **`DC_decomposition(Q, spn)`**: Compute DC decomposition of matrix Q
-- **`compute_ub(Q, d, A, b, Aeq, beq, n, params, sol, nb_rounds)`**: Compute upper bound
-- **`generate_cut_dnn(Q, d, A, b, Aeq, beq, m, n, nuR, barx, x0, tol_mosek, beta)`**: Generate doubly nonnegative cutting plane
-- **`lower_bound_dnn(Q, d, A, b, Aeq, beq, tol_mosek, m, n)`**: Compute doubly nonnegative relaxation lower bound
-- **`check_kkt_conditions(x, Q, d, A, b, Aeq, beq)`**: Verify KKT conditions
-- **`qpsolver(Q, d, A, b, Aeq, beq, lb, ub, sol, parameters)`**: Internal cutting-plane solver used by `dcqp_solve`
-- **`rescale_constraint_by_slack(a_row, b_value, A, b, Aeq, beq, met_glp, tol_glp)`**: Rescale an inequality row using its maximum feasible slack
 
 ## Output Structure
 
