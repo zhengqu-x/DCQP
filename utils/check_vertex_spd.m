@@ -50,6 +50,8 @@ else
         % Check whether Q|_H_I_x > 0
         B = null(A_I_x);
         BH=B'*Q*B;
+        % Keep the curvature check and eigenvectors real under roundoff.
+        BH=(BH+BH')/2;
         eigBH=eig(BH);
         if min(eigBH)>-epsilon     
             spd_flag = 1;

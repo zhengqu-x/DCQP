@@ -1,4 +1,4 @@
-function [bestub,best_sol,bestlb,nb_iters]=qpsolver(Q,d,A,b,Aeq,beq,lb,ub,sol,parameters)
+function [bestub,best_sol,bestlb,nb_iters,cut_counts,diagnostics]=qpsolver(Q,d,A,b,Aeq,beq,lb,ub,sol,parameters)
 
 %==========================================================================%
 % Solve the following quadratic program:
@@ -18,42 +18,53 @@ function [bestub,best_sol,bestlb,nb_iters]=qpsolver(Q,d,A,b,Aeq,beq,lb,ub,sol,pa
 % bestub           Best upper bound of the objective value found
 % best_sol         Corresponding solution vector achieving bestub
 % bestlb           Best lower bound of the objective value found
+% nb_iters         Number of outer iterations performed
+% cut_counts       Added-cut counts: total, dnn, and konno
+% diagnostics      Detailed iteration records for the caller to save
 %==========================================================================
 
-met_glp = parameters.metglp;
-met_gqp = parameters.metgqp;
-max_N= parameters.max_N;
-
-spn = parameters.eps_dcdecomposition;
-eps_checkpsd = parameters.eps_checkpsd;
-gap_tol =parameters.gap_tol;
-tol_mosek = parameters.tol_mosek;
-tol_glp = parameters.tol_glp;
-tol_gqp = parameters.tol_gqp;
+met_glp=parameters.gurobi_lp_method;
+max_iterations=parameters.max_iterations;
+max_time=parameters.max_time;
+spn=parameters.dc_regularization;
+gap_tol=parameters.gap_tolerance;
+tol_mosek=parameters.mosek_tolerance;
+tol_glp=parameters.gurobi_lp_tolerance;
 eta=parameters.eta;
+known_start=isfield(parameters,'known_solution') && ~isempty(parameters.known_solution);
+konnofirst=parameters.konnofirst;
 
 
 bestub= ub;
 bestlb= lb;
 
 
-lb_record=zeros(max_N,1);
-ub_record=zeros(max_N,1);
-bestub_record=zeros(max_N,1);
-bestlb_record=zeros(max_N,1);
-cut_lb_record=zeros(max_N,1);
-alpha_record=zeros(max_N,1);
+lb_record=zeros(max_iterations,1);
+ub_record=zeros(max_iterations,1);
+bestub_record=zeros(max_iterations,1);
+bestlb_record=zeros(max_iterations,1);
+cut_lb_record=Inf(max_iterations,1);
+alpha_record=zeros(max_iterations,1);
+konno_lb_record=Inf(max_iterations,1);
+konno_record=cell(max_iterations,1);
+time_record_konno=zeros(max_iterations,1);
+konno_recovery_record=cell(max_iterations,1);
+time_record_konno_recovery=zeros(max_iterations,1);
+dc_recovery_record=cell(max_iterations,1);
+time_record_dc_recovery=zeros(max_iterations,1);
+empty_retained_record=cell(max_iterations,1);
 
-time_record_lb=zeros(max_N,1);
-time_record_cut_lb=zeros(max_N,1);
-time_record_kkt=zeros(max_N,1);
-time_record_generate_cut=zeros(max_N,1);
+time_record_lb=zeros(max_iterations,1);
+time_record_cut_lb=zeros(max_iterations,1);
+time_record_kkt=zeros(max_iterations,1);
+time_record_generate_cut=zeros(max_iterations,1);
 
 
 
 
 A_bar=A;
 b_bar=b;
+initial_inequality_count=size(A_bar,1);
 
 
 
@@ -76,12 +87,22 @@ best_sol=sol/solution_scale;
 
 
 for j=1:size(A_bar,1)
-    [A_bar(j,:),b_bar(j)] = rescale_constraint_by_slack(A_bar(j,:),b_bar(j),A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
+    [A_bar(j,:),b_bar(j),rescale_status] = rescale_constraint_by_slack(A_bar(j,:),b_bar(j),A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
+    if rescale_status==-1
+        error('qpsolver:EmptyInputRegion','The input region is empty during initial constraint rescaling.');
+    end
 end
 
 
 
-for i=1:max_N
+i=0;
+if isfield(parameters,'solve_timer')
+    solve_timer=parameters.solve_timer;
+else
+    solve_timer=tic;
+end
+while i<max_iterations && toc(solve_timer)<max_time
+    i=i+1;
 
     m=size(A_bar,1);
     n=size(A_bar,2);
@@ -98,20 +119,14 @@ for i=1:max_N
         end
     end
 
+    if parameters.verbose
+        fprintf('iteration %d\n',i);
+    end
+
     if cut_val<1 || mod(i-1,10)==0
-        [lb,sdp_status,S,res]=lower_bound_dnn(Q,d,A_bar,b_bar,Aeq,beq,tol_mosek,m,n);
-        if sdp_status==1
-            delta=min(eig(S));
-             if parameters.verbose==true
-                fprintf('compute lower bound, minimal eigenvalue of S=%4.2e\n\n\n',delta);
-             end
-            lb_record(i)=lb+delta+tstar^2*min(delta,0);
-            u=res.sol.itr.doty;
-            U=sMat(u,n+1);
-            x_0=U(end,1:end-1)';
-        else
-            error('DNN lower bound was not solved successfully. Consider increasing the MOSEK tolerance and retrying.');
-        end
+        [lb_record(i),barz]=compute_lower_bound( ...
+            Q,d,A_bar,b_bar,Aeq,beq,tol_mosek,m,n,tstar, ...
+            parameters.verbose,parameters.mosek_quiet);
     else
         lb_record(i)=lb_record(i-1);
     end
@@ -119,34 +134,17 @@ for i=1:max_N
 
     bestlb=max(bestlb,lb_record(i));
     bestlb_record(i)=bestlb;
-
-    x0=x_0;
-    if max(A_bar*x_0-b_bar) >1e-9 || (~isempty(beq) &&norm(Aeq*x_0-beq)>1e-9)
-        x0 = gurobiqp(eye(n),-x_0,A_bar,b_bar,Aeq,beq,met_gqp,tol_gqp,n);
+    if parameters.verbose==true
+        fprintf('  corrected lb = %.4e, bestlb = %.4e\n', ...
+            lb_record(i),bestlb);
     end
 
     time_record_lb(i)=toc;
 
     tic
-
-    [x_kkt,rho] = search_of_kkt_point(Q,d,A_bar,b_bar,Aeq,beq,M,N,x0,eps_checkpsd,met_gqp,tol_gqp,n);
-
-    barx=x_kkt;
-    v=barx'*Q*barx+2*d'*barx;
-
-    if i==1 && v>bestub
-        x0_best=best_sol;
-        if max(A_bar*x0_best-b_bar) >1e-9 || (~isempty(beq) && norm(Aeq*x0_best-beq)>1e-9)
-            x0_best = gurobiqp(eye(n),-x0_best,A_bar,b_bar,Aeq,beq,met_gqp,tol_gqp,n);
-        end
-        [x_kkt_best,rho_best] = search_of_kkt_point(Q,d,A_bar,b_bar,Aeq,beq,M,N,x0_best,eps_checkpsd,met_gqp,tol_gqp,n);
-        v_best_kkt=x_kkt_best'*Q*x_kkt_best+2*d'*x_kkt_best;
-        if v_best_kkt<=v
-            barx=x_kkt_best;
-            rho=rho_best;
-            v=v_best_kkt;
-        end
-    end
+    [barx,v]=compute_upper_bound( ...
+        Q,d,A_bar,b_bar,Aeq,beq,M,N,barz,best_sol,bestub,i,known_start,parameters);
+    rho=linearization_minimum(Q,d,barx,A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
 
     time_record_kkt(i)=toc;
 
@@ -157,6 +155,16 @@ for i=1:max_N
     bestub=min(v,bestub);
     ub_record(i)=v;
     bestub_record(i)=bestub;
+    if parameters.verbose==true
+        if abs(bestub)>gap_tol
+            displayed_relative_gap=abs(bestub-bestlb)/abs(bestub);
+        else
+            displayed_relative_gap=abs(bestub-bestlb);
+        end
+        fprintf(['  v = %.4e, bestub = %.4e, bestlb = %.4e, ', ...
+            'relative gap = %.4e\n'], ...
+            v,bestub,bestlb,displayed_relative_gap);
+    end
 
 
     tic;
@@ -164,96 +172,257 @@ for i=1:max_N
         break
     end
 
-    nuR=bestub-abs(bestub)*gap_tol;
+    [nu,nuR,beta]=dcqp_cut_targets(bestub,v,eta,gap_tol);
 
-    nuR2=bestub-eta*abs(bestub)*gap_tol;
 
-    beta=abs(bestub)*gap_tol*0.01;
-
-    if abs(bestub)<gap_tol
-       nuR=bestub-gap_tol;
-       nuR2=bestub-0.9*gap_tol;
-       beta=min(1e-7,0.01*gap_tol);
-    elseif v>bestub
-        nuR2=0.99*bestub+0.01*v;
-        beta=min(1e-6,0.1*(v-bestub));
+    konno_added=false;
+    konno_refined=false;
+    konno_threshold=max(1e-5,abs(bestub)*gap_tol*0.1);
+    if konnofirst && abs(bestub-v)<=konno_threshold
+        konno_timer=tic;
+        [A_bar,b_bar,barx,v,bestub,best_sol,nu,nuR,beta,konno]= ...
+            compute_konno_cut(Q,d,A_bar,b_bar,Aeq,beq,M,N,barx,v, ...
+            bestub,best_sol,nu,nuR,beta,barz,tstar,parameters);
+        konno_added=konno.added;
+        konno_refined=konno.refined;
+        konno_record{i}=konno.record;
+        konno_recovery_record{i}=konno.recovery;
+        time_record_konno_recovery(i)=konno.recovery_time;
+        if konno_refined
+            ub_record(i)=v;
+            bestub_record(i)=bestub;
+        end
+        time_record_konno(i)=toc(konno_timer);
+        if konno_record{i}.accepted
+            konno_lb_record(i)=konno_record{i}.lower_bound;
+            if parameters.verbose
+                fprintf('  Konno accepted: factor=%.2e, norm(c)=%.2e, validated lb=%.4e\n', ...
+                    konno_record{i}.factor,konno_record{i}.norm_c,konno_lb_record(i));
+            end
+            if konno_record{i}.region_empty
+                bestlb=max(bestlb,konno_lb_record(i));
+                lb_record(i)=bestlb; bestlb_record(i)=bestlb;
+                if parameters.verbose, fprintf('  Konno certifies the entire remaining region.\n'); end
+                break
+            end
+            m=size(A_bar,1); % Include the newly retained halfspace in the SDP.
+            % Keep the same anchor and relaxation point across the two cuts.
+            konno_record{i}.sdp_region_rows=m;
+            konno_record{i}.sdp_objective_point=barz;
+            if parameters.verbose
+                fprintf(['  DNN cut after generalized Konno cut: retained region ', ...
+                    'has %d inequalities; keeping the same barx and barz.\n'],m);
+            end
+        elseif parameters.verbose
+            fprintf('  Konno skipped: %s; %s\n',konno_record{i}.status,konno_record{i}.message);
+        end
+    elseif konnofirst && parameters.verbose
+        fprintf('  Konno skipped: objective is outside the closeness threshold.\n');
     end
-
+    rho=linearization_minimum(Q,d,barx,A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
+    % Roll back only the attempted SDP cut if its generation/validation fails.
+    A_before_sdp=A_bar; b_before_sdp=b_bar;
+    generation_timer=tic; % Separate Konno time from SDP generation time.
+    try
 
     tol_mosek_cut=parameters.tol_mosek_cut;
-    [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta,rho);
+    if parameters.verbose==true
+        % Print before the solve so these values remain visible if MOSEK fails.
+        fprintf('  nu = %.4e, nu_R = %.4e\n',nu,nuR);
+        fprintf('  beta = %.2e, v - nu_R = %.4e, nu_R - nu = %.4e\n', ...
+            beta, v-nuR, nuR-nu);
+        fprintf('  rho = %.2e, min(rho+beta,0) = %.2e\n',rho,min(rho+beta,0));
+    end
+    [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n, ...
+        nuR,barx,barz,tol_mosek_cut,beta,rho,parameters.mosek_quiet);
 
     while tol_mosek_cut<=1e-5 && isempty(c)
         tol_mosek_cut=tol_mosek_cut*10;
-        fprintf("reducing tol_mosek_cut to %4.2e. \n", tol_mosek_cut);
-        [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n,nuR2,barx,x_0,tol_mosek_cut,beta,rho);
+        fprintf('  retrying cut generation with tol_mosek_cut = %.2e\n',tol_mosek_cut);
+        [c,cut_val,~,S] = generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n, ...
+            nuR,barx,barz,tol_mosek_cut,beta,rho,parameters.mosek_quiet);
     end
+    dc_refined=false;
+    if isempty(c) && ~konno_added
+        recovery_timer=tic;
+        [recovered_point,dc_recovery_record{i}]=refine_failed_cut_point( ...
+            Q,d,A_bar,b_bar,Aeq,beq,M,N,barx,beta,parameters);
+        time_record_dc_recovery(i)=toc(recovery_timer);
+        dc_recovery_record{i}.sdp_objective_point=barz;
+        dc_recovery_record{i}.konno_already_added=konno_added;
+        if dc_recovery_record{i}.refined
+            % This is a new recovery attempt; keep the existing SDP point
+            % and all previously validated cuts on the retained region.
+            dc_refined=true;
+            barx=recovered_point;
+            v=barx'*Q*barx+2*d'*barx;
+            if v<bestub, best_sol=barx; end
+            bestub=min(bestub,v);
+            ub_record(i)=v; bestub_record(i)=bestub;
+            % Apply the unchanged cut-target/beta policy to the new anchor.
+            [nu,nuR,beta]=dcqp_cut_targets(bestub,v,eta,gap_tol);
+            rho=linearization_minimum(Q,d,barx,A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
+            dc_recovery_record{i}.beta_after=beta;
+            dc_recovery_record{i}.nu_after=nu;
+            dc_recovery_record{i}.nuR_after=nuR;
+            if parameters.verbose
+                fprintf('  SDP recovery retry: bestub=%.4e, v=%.4e, nu=%.4e, nu_R=%.4e, beta=%.2e; barz unchanged.\n', ...
+                    bestub,v,nu,nuR,beta);
+            end
+            tol_mosek_cut=parameters.tol_mosek_cut;
+            [c,cut_val,~,S]=generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n, ...
+                nuR,barx,barz,tol_mosek_cut,beta,rho,parameters.mosek_quiet);
+            while tol_mosek_cut<=1e-5 && isempty(c)
+                tol_mosek_cut=tol_mosek_cut*10;
+                fprintf('  retrying recovered cut with tol_mosek_cut = %.2e\n',tol_mosek_cut);
+                [c,cut_val,~,S]=generate_cut_dnn(Q,d,A_bar,b_bar,Aeq,beq,m,n, ...
+                    nuR,barx,barz,tol_mosek_cut,beta,rho,parameters.mosek_quiet);
+            end
+            dc_recovery_record{i}.retry_success=~isempty(c);
+        end
+    end
+    independent_validation=konno_added || konno_refined || dc_refined;
     if isempty(c)
-        error('Failed to generate cut with MOSEK tolerance %4.2e. Try decreasing the error tolerance epsilon.\n\n\n', tol_mosek_cut)
+        error('qpsolver:SDPCutGeneration','Failed to generate cut with MOSEK tolerance %4.2e. Try decreasing the error tolerance epsilon.',tol_mosek_cut)
     else
         delta=min(eig(S));
         if parameters.verbose==true
-            fprintf('generate cut with mosek tolerance %4.2e: minimal eigenvalue of S=%4.2e\n\n\n',tol_mosek_cut,delta);
+            fprintf('  cut result: min_eig(S) = %.2e, cut_val = %.2e\n', ...
+                delta,cut_val);
         end
     end
 
 
-    time_record_generate_cut(i)=toc;
+    time_record_generate_cut(i)=toc(generation_timer);
 
-    tic
+    verification_timer=tic;
+    [A_bar,b_bar,cut_lb_record(i),alpha_record(i),action, ...
+        certified_lb,empty_retained_record{i}]=dnn_cut_verification( ...
+        Q,d,A_bar,b_bar,Aeq,beq,c,barx,nu,nuR,delta,tstar,m,n, ...
+        independent_validation,konno_added,0.9,parameters);
 
-    A_cut=[A_bar;c'/norm(c)];
-    b_cut=[b_bar; (1+c'*barx)/norm(c)];
-
-    [~,tstar_cut,~]=gurobilp(-ones(n,1),A_cut,b_cut,Aeq,beq,[],[],met_glp,tol_glp);
-
-    cut_lb=nuR2+delta+tstar_cut^2*min(delta,0);
-
-    cut_lb_record(i)=cut_lb;
-
-    if cut_lb>=nuR
-        A_bar=[A_bar;-c'/norm(c)];
-        b_bar=[b_bar; (-1-c'*barx)/norm(c)];
-        [A_bar(end,:),b_bar(end)] = rescale_constraint_by_slack(A_bar(end,:),b_bar(end),A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
-    else
-        alpha=1;
-        A_cut=[A_bar;c'/norm(c)];
-        b_cut=[b_bar; (alpha+c'*barx)/norm(c)];
-        [lb_cut,~,S,~]=lower_bound_dnn(Q,d,A_cut,b_cut,Aeq,beq,tol_mosek,m+1,n);
-        delta_cut=min(eig(S));
-        if parameters.verbose==true
-            fprintf('cut lower bound computing: minimal eigenvalue of S=%4.2e\n\n\n',delta_cut);
-        end
-        lb_cut2=lb_cut+delta_cut+tstar_cut^2*min(delta_cut,0);
-        if lb_cut2<nuR
-            alpha=0.9;
-            A_cut=[A_bar;c'/norm(c)];
-            b_cut=[b_bar; (alpha+c'*barx)/norm(c)];
-            [lb_cut,~,S,~]=lower_bound_dnn(Q,d,A_cut,b_cut,Aeq,beq,tol_mosek,m+1,n);
-            delta_cut=min(eig(S));
-            if parameters.verbose==true
-                fprintf('reduced alpha, cut lower bound recomputing: minimal eigenvalue of S=%4.2e\n\n\n',delta_cut);
-            end
-            lb_cut2=lb_cut+delta_cut+tstar_cut^2*min(delta_cut,0);
-        end
-        cut_lb_record(i)=lb_cut2;
-        alpha_record(i)=alpha;
-        A_bar=[A_bar;-c'/norm(c)];
-        b_bar=[b_bar; (-alpha-c'*barx)/norm(c)];
-        [A_bar(end,:),b_bar(end)] = rescale_constraint_by_slack(A_bar(end,:),b_bar(end),A_bar,b_bar,Aeq,beq,met_glp,tol_glp);
+    if isfinite(certified_lb)
+        bestlb=max(bestlb,certified_lb);
+        lb_record(i)=bestlb;
+        bestlb_record(i)=bestlb;
     end
+    if strcmp(action,'terminate')
+        time_record_cut_lb(i)=toc(verification_timer);
+        break
+    elseif strcmp(action,'skipped')
+        cut_val=0;
+        time_record_cut_lb(i)=toc(verification_timer);
+        continue
+    end
+
+    % A Konno cut changed the region: refresh the main relaxation next time.
+    if konno_added, cut_val=0; end
 
 
     if parameters.verbose==true
-    fprintf('iteration %5d: bestub=%4.8f, nuR2=%4.8f, nuR=%4.8f, delta=%4.8f,current v=%4.8f, cut_lb=%4.10f, best_lb=%4.10f\n\n\n', i, bestub,nuR2,nuR,delta,v,cut_lb_record(i),bestlb);
+        fprintf('  cut retained: cut_lb = %.4e, delta = %.2e\n', ...
+            cut_lb_record(i),delta);
     end
-    time_record_cut_lb(i)=toc;
+    time_record_cut_lb(i)=toc(verification_timer);
+    catch cut_error
+        if ~ismember(cut_error.identifier,{'qpsolver:SDPCutGeneration','qpsolver:SDPValidation'})
+            rethrow(cut_error)
+        end
+        A_bar=A_before_sdp; b_bar=b_before_sdp;
+        rejected_cut_val=cut_val;
+        cut_lb_record(i)=Inf; alpha_record(i)=0; cut_val=0;
+        if time_record_generate_cut(i)==0
+            time_record_generate_cut(i)=toc(generation_timer);
+        end
+        if ~konno_added
+            % SDP recovery above checked rho and, when needed, refined barx.
+            % Validation failures also need that check before forced Konno.
+            fallback_timer=tic;
+            state=struct('barx',barx,'best_sol',best_sol,'bestub',bestub, ...
+                'v',v,'nu',nu,'nuR',nuR,'beta',beta);
+            previous_konno=konno_record{i};
+            [A_bar,b_bar,state,fallback_record,fallback_recovery]=dcqp_konno_fallback( ...
+                Q,d,A_bar,b_bar,Aeq,beq,M,N,state,barz,abs(tstar),parameters, ...
+                isempty(dc_recovery_record{i}),isempty(konno_recovery_record{i}));
+            time_record_konno(i)=time_record_konno(i)+toc(fallback_timer);
+            best_sol=state.best_sol; bestub=state.bestub; v=state.v;
+            ub_record(i)=v; bestub_record(i)=bestub;
+            fallback_record.previous_attempt=previous_konno;
+            fallback_record.sdp_error_identifier=cut_error.identifier;
+            fallback_record.sdp_error_message=cut_error.message;
+            konno_record{i}=fallback_record;
+            if ~isempty(fallback_recovery)
+                if isempty(konno_recovery_record{i})
+                    konno_recovery_record{i}=fallback_recovery;
+                else
+                    konno_recovery_record{i}.sdp_fallback_recovery=fallback_recovery;
+                end
+            end
+            if fallback_record.accepted
+                konno_lb_record(i)=fallback_record.lower_bound;
+                if parameters.verbose
+                    fprintf('  Konno accepted: factor=%.2e, norm(c)=%.2e, validated lb=%.4e (SDP failure fallback)\n', ...
+                        fallback_record.factor,fallback_record.norm_c,konno_lb_record(i));
+                end
+                if fallback_record.region_empty
+                    bestlb=max(bestlb,konno_lb_record(i));
+                    lb_record(i)=bestlb; bestlb_record(i)=bestlb;
+                    if parameters.verbose, fprintf('  Fallback Konno certifies the entire remaining region.\n'); end
+                    break
+                end
+                konno_added=true;
+            end
+        end
+        if ~konno_added
+            if strcmp(cut_error.identifier,'qpsolver:SDPValidation') && ~isempty(c)
+                final_parameters=parameters;
+                final_parameters.accept_cut_below_threshold=true;
+                if parameters.verbose
+                    fprintf(['  Generalized Konno fallback failed; retrying ', ...
+                        'the DNN cut with alpha = 0.5.\n']);
+                end
+                verification_timer=tic;
+                [A_bar,b_bar,cut_lb_record(i),alpha_record(i),action, ...
+                    certified_lb,empty_retained_record{i}]=dnn_cut_verification( ...
+                    Q,d,A_before_sdp,b_before_sdp,Aeq,beq,c,barx,nu,nuR, ...
+                    delta,tstar,m,n,independent_validation,false,0.5, ...
+                    final_parameters);
+                time_record_cut_lb(i)=toc(verification_timer);
+                cut_val=rejected_cut_val;
+                if isfinite(certified_lb)
+                    bestlb=max(bestlb,certified_lb);
+                    lb_record(i)=bestlb;
+                    bestlb_record(i)=bestlb;
+                end
+                if strcmp(action,'terminate')
+                    break
+                elseif strcmp(action,'skipped')
+                    cut_val=0;
+                    continue
+                end
+                if parameters.verbose
+                    fprintf(['  Accepted final DNN retry: alpha = %.2e, ', ...
+                        'cut_lb = %.4e, nu = %.4e.\n'], ...
+                        alpha_record(i),cut_lb_record(i),nu);
+                end
+                continue
+            end
+            rethrow(cut_error)
+        end
+        konno_record{i}.sdp_skipped=true;
+        konno_record{i}.sdp_error_identifier=cut_error.identifier;
+        konno_record{i}.sdp_error_message=cut_error.message;
+        if parameters.verbose
+            fprintf('  SDP cut failed; keeping the validated Konno cut and refreshing the relaxation next iteration.\n');
+        end
+        continue
+    end
 
 end
 
 best_sol=best_sol*solution_scale;
-if i>1
-    bestlb=min(min(cut_lb_record(1:i-1)),bestlb);
+if i>0
+    bestlb=min([bestlb;cut_lb_record(1:i);konno_lb_record(1:i)]);
 end
 nb_iters=i;
 bestub=bestub/parameters.scaling;
@@ -263,31 +432,70 @@ ub_record=ub_record/parameters.scaling;
 bestub_record=bestub_record/parameters.scaling;
 bestlb_record=bestlb_record/parameters.scaling;
 cut_lb_record=cut_lb_record/parameters.scaling;
+konno_lb_record=konno_lb_record(1:i)/parameters.scaling;
+konno_record=konno_record(1:i); % Detailed records retain internal solver units.
+time_record_konno=time_record_konno(1:i);
+konno_recovery_record=konno_recovery_record(1:i);
+time_record_konno_recovery=time_record_konno_recovery(1:i);
+dc_recovery_record=dc_recovery_record(1:i);
+time_record_dc_recovery=time_record_dc_recovery(1:i);
+empty_retained_record=empty_retained_record(1:i);
 
 lb_record=lb_record(1:i);
 ub_record=ub_record(1:i);
 bestub_record=bestub_record(1:i);
 bestlb_record=bestlb_record(1:i);
-cut_lb_record=cut_lb_record(1:i-1);
+cut_lb_record=cut_lb_record(1:i);
 alpha_record=alpha_record(1:i);
 time_record_lb=time_record_lb(1:i);
 time_record_cut_lb=time_record_cut_lb(1:i);
 time_record_kkt=time_record_kkt(1:i);
 time_record_generate_cut=time_record_generate_cut(1:i);
 
-
-resultsfolder = fullfile(pwd, 'testresults');
-if ~exist(resultsfolder, 'dir')
-        mkdir(resultsfolder);
+% alpha_record is positive exactly when a DNN cut was appended. A
+% generalized Konno record represents an appended cut only when it was
+% accepted and its retained region was nonempty.
+dnn_cut_count=nnz(alpha_record>0);
+konno_cut_count=0;
+for record_index=1:numel(konno_record)
+    record=konno_record{record_index};
+    if ~isempty(record) && isfield(record,'accepted') && record.accepted && ...
+            isfield(record,'region_empty') && ~record.region_empty
+        konno_cut_count=konno_cut_count+1;
+    end
 end
+added_cut_count=size(A_bar,1)-initial_inequality_count;
+recorded_cut_count=dnn_cut_count+konno_cut_count;
+if recorded_cut_count~=added_cut_count
+    warning('qpsolver:CutCountMismatch', ...
+        ['Cut records report %d added cuts, but the retained system ', ...
+         'contains %d added inequalities.'],recorded_cut_count,added_cut_count);
+end
+cut_counts=struct('total',added_cut_count,'dnn',dnn_cut_count, ...
+    'konno',konno_cut_count,'records_match',recorded_cut_count==added_cut_count);
+diagnostics=struct( ...
+    'lb_record',lb_record, ...
+    'ub_record',ub_record, ...
+    'bestlb_record',bestlb_record, ...
+    'bestub_record',bestub_record, ...
+    'dnn_cut_lb_record',cut_lb_record, ...
+    'alpha_record',alpha_record, ...
+    'konno_record',{konno_record}, ...
+    'konno_cut_lb_record',konno_lb_record, ...
+    'konno_recovery_record',{konno_recovery_record}, ...
+    'dc_recovery_record',{dc_recovery_record}, ...
+    'empty_retained_record',{empty_retained_record}, ...
+    'time_record_lb',time_record_lb, ...
+    'time_record_ub',time_record_kkt, ...
+    'time_record_generate_cut',time_record_generate_cut, ...
+    'time_record_cut_verification',time_record_cut_lb, ...
+    'time_record_konno',time_record_konno, ...
+    'time_record_konno_recovery',time_record_konno_recovery, ...
+    'time_record_dc_recovery',time_record_dc_recovery, ...
+    'cut_counts',cut_counts, ...
+    'konnofirst',konnofirst);
 
-timestamp = string(datetime('now', 'Format', 'yyyy-MM-dd_HH-mm-ss'));
-filename=fullfile(resultsfolder, sprintf('%s-%s.mat', parameters.filename,  timestamp));
-
-
-save(char(filename),"best_sol","alpha_record","lb_record","time_record_generate_cut","time_record_kkt","time_record_cut_lb","cut_lb_record","time_record_lb","bestlb_record","bestub_record","ub_record")
-
-fprintf("************************************ End of Computation  ****************************\n\n\n\n");
+fprintf("************************************ End of Computation  ****************************\n");
 
 
 

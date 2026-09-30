@@ -19,10 +19,9 @@ codegen/
 slprj/
 
 # Result and log files
-testresults/*.mat
-paper-examples/testresults/*.mat
-paper-examples/summary_results/*.mat
 *.txt
+!tests/frozen_runtime_sha256.txt
+!tests/packaged_runtime_sha256.txt
 diaryfile*.txt
 
 # System files

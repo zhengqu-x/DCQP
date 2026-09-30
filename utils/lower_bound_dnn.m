@@ -1,4 +1,5 @@
-function [lb,sdp_status,S,res] = lower_bound_dnn(Q,d,A,b,Aeq,beq,tol_mosek,m,n)
+function [lb,sdp_status,S,res] = lower_bound_dnn( ...
+    Q,d,A,b,Aeq,beq,tol_mosek,m,n,mosek_quiet)
 
 % ======================================================================= %
 % Compute the dnn relaxation of the following problem
@@ -22,7 +23,12 @@ function [lb,sdp_status,S,res] = lower_bound_dnn(Q,d,A,b,Aeq,beq,tol_mosek,m,n)
 % sdp_status
 % S                S
 % res              res returned by MOSEK
-% ======================================================================= %   
+% ======================================================================= %
+
+if nargin<10
+    mosek_quiet=false;
+end
+validateattributes(mosek_quiet,{'logical'},{'scalar'},mfilename,'mosek_quiet');
 
 
 
@@ -112,8 +118,12 @@ param.MSK_DPAR_INTPNT_CO_TOL_INFEAS = tol_mosek;
 param.MSK_IPAR_AUTO_UPDATE_SOL_INFO = 'MSK_ON';
 
 
-%[~, res] = mosekopt('minimize echo(5)', prob, param);
-[~, res] = mosekopt('minimize echo(0)', prob, param);
+if mosek_quiet
+    command='minimize echo(0)';
+else
+    command='minimize echo(5)';
+end
+[~, res] = mosekopt(command, prob, param);
 sdp_status=0;
 lb=-Inf;
 S=[];

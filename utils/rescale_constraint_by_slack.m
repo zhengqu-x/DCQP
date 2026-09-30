@@ -1,7 +1,11 @@
-function [a_row,b_value] = rescale_constraint_by_slack(a_row,b_value,A,b,Aeq,beq,met_glp,tol_glp)
+function [a_row,b_value,exitflag] = rescale_constraint_by_slack(a_row,b_value,A,b,Aeq,beq,met_glp,tol_glp)
+% An infeasible rescaling LP means the supplied region is empty. Return the
+% unchanged row and exitflag=-1 so the caller can handle this before scaling.
 
 [~,min_row_value,exitflag]=gurobilp(a_row',A,b,Aeq,beq,[],[],met_glp,tol_glp);
-if exitflag~=1
+if exitflag==-1
+    return
+elseif exitflag~=1
     error('Failed to compute constraint slack bound while rescaling constraints.');
 end
 

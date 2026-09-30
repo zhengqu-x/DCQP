@@ -11,8 +11,8 @@ function ver_info = dcqp_version()
 %              .description - Package description
 
 ver_info = struct();
-ver_info.version = '1.0.1';
-ver_info.date = '2026-06-03';
+ver_info.version = '1.1.0';
+ver_info.date = '2026-09-30';
 ver_info.description = 'Doubly Nonnegative based Cutting Plane method for Quadratic Programming';
 ver_info.authors = 'Zheng Qu, Defeng Sun, Jintao Xu';
 ver_info.license = 'Academic License';

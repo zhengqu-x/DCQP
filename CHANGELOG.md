@@ -5,6 +5,25 @@ All notable changes to the DCQP project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-30
+
+### Added
+- Added structured BoxQP, inexact-StQP, and many-local-minima datasets, together with their MATLAB generators.
+- Added unified DCQP and Gurobi paper-example entry points for structured, synthetic, and existing test families.
+- Added live Markdown summaries and a common per-instance result schema for paper experiments.
+- Added generalized Konno-cut generation, validation, recovery, and fallback helpers used by the frozen numerical runtime.
+- Added `mosek_quiet` to suppress MOSEK optimizer logs independently of DCQP progress messages.
+
+### Changed
+- Packaged the numerical runtime used by the successful 120-instance inexact-StQP experiment, with integrity manifests recording its provenance.
+- Consolidated generated experiment output under `paper-examples/results/`.
+- Expanded the public README with direct `dcqp_solve` usage, complete option documentation, dataset descriptions, and reproducibility commands.
+
+### Fixed
+- Applied the signed linearization correction when validating DNN cut certificates.
+- Reported the number of DNN and generalized Konno inequalities actually added, rather than using the outer-iteration count.
+- Corrected live result summaries to report DCQP's relative gap consistently.
+
 ## [1.0.1] - 2026-06-03
 
 ### Added

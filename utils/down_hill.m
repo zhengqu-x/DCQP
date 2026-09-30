@@ -22,7 +22,10 @@ function [x_bar] = down_hill(Q,d,B,A,b,x_hat,I_x_hat_c)
 
 
 
-[V, D] = eig(B'*Q*B);
+% Restore symmetry lost to roundoff in the projection.
+H = B'*Q*B;
+H = (H + H')/2;
+[V, D] = eig(H);
 
 
 h_x_hat = B*V(:, find(diag(D) <= 0, 1));

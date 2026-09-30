@@ -235,6 +235,19 @@ if params.gap_tolerance <= 0 || params.gap_tolerance >= 1
           'gap_tolerance must be between 0 and 1');
 end
 
+if ~isfield(params,'accept_cut_below_threshold') || ...
+        ~islogical(params.accept_cut_below_threshold) || ...
+        ~isscalar(params.accept_cut_below_threshold)
+    error('dcqp_check_input:invalid_parameter', ...
+        'accept_cut_below_threshold must be a logical scalar');
+end
+
+if ~isfield(params,'mosek_quiet') || ~islogical(params.mosek_quiet) || ...
+        ~isscalar(params.mosek_quiet)
+    error('dcqp_check_input:invalid_parameter', ...
+        'mosek_quiet must be a logical scalar');
+end
+
 % Check problem dimensions are reasonable
 if n > 10000
     warning('dcqp_check_input:large_problem', ...

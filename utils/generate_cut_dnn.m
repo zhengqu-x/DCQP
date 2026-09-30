@@ -1,4 +1,5 @@
-function [c,val,sdp_status,S] = generate_cut_dnn(Q,d,A,b,Aeq,beq,m,n,nuR,barx,x0,tol_mosek,beta,rho)
+function [c,val,sdp_status,S] = generate_cut_dnn( ...
+    Q,d,A,b,Aeq,beq,m,n,nuR,barx,barz,tol_mosek,beta,rho,mosek_quiet)
 
 % ======================================================================= %
 % Generate cut for the following problem
@@ -8,7 +9,7 @@ function [c,val,sdp_status,S] = generate_cut_dnn(Q,d,A,b,Aeq,beq,m,n,nuR,barx,x0
 % at KKT point barx.
 % 
 % Solve the SDP problem
-%     min c'*(x0-barx)
+%     min c'*(barz-barx)
 %     s.t. [Q d; d' -nuR]=S+[-A b; zeros(1,n) 1]'T[-A b; zeros(1,n) 1]
 %                              +1/2[Q\bar x+d;-barx'*Q*barx-d'*barx+beta]*[-c' 1+c'*barx]
 %                              +1/2[-c; 1+c'*barx]*[(Q\bar x+d)'
@@ -23,7 +24,7 @@ function [c,val,sdp_status,S] = generate_cut_dnn(Q,d,A,b,Aeq,beq,m,n,nuR,barx,x0
 % n                Size(A,2)
 % nuR              \nu_R
 % barx             \bar x
-% x0               x_0
+% barz             DNN relaxation point
 % tol_mosek        Tolerance parameter used in MOSEK
 % beta             Beta
 % rho              min_{x in P} (Q*barx+d)'*(x-barx)
@@ -34,7 +35,13 @@ function [c,val,sdp_status,S] = generate_cut_dnn(Q,d,A,b,Aeq,beq,m,n,nuR,barx,x0
 % val              Primal optimal value returned by MOSEK
 % sdp_status       Status of MOSEK
 % S                S
-% ======================================================================= %   
+% ======================================================================= %
+
+validateattributes(rho,{'double'},{'real','finite','scalar'},mfilename,'rho');
+if nargin<15
+    mosek_quiet=false;
+end
+validateattributes(mosek_quiet,{'logical'},{'scalar'},mfilename,'mosek_quiet');
 
 
 
@@ -47,7 +54,7 @@ barA=[-A b;zeros(1,n) 1];  % barA of dimension (m+1,n+1)
 
 
 % Solve the following SDP
-%                                min  c'*(x0-barx)
+%                                min  c'*(barz-barx)
 %                                s.t. barQ-barA'*T*barA+0.5q*[c' -c'*barx-1]+0.5*[c;-1-c'*barx]*q'+ U*[Aeq beq]+[Aeq beq]'*U'=S
 %                                     T>=0, S PSD.
 
@@ -103,18 +110,18 @@ if meq>0
 end
 
 % Solve the following SDP
-%                                min  c'*(x0-barx)
+%                                min  c'*(barz-barx)
 %                                s.t. svec(barQ)+Rq+M_c*c-M_T*vec(T)+M_U*U=sVec(S)
 %                                     T>=0, S PSD.
     
 % Construct model
-prob.c = [x0-barx;zeros((m+1)*m/2+(n+1)*meq,1)]'; % Parameters in the objective function
+prob.c = [barz-barx;zeros((m+1)*m/2+(n+1)*meq,1)]'; % Parameters in the objective function
 prob.a = sparse([], [], [], 0, n+(m+1)*m/2+(n+1)*meq); % 0 constraints, n+m*(m+1)/2 scalar variables
 prob.blc = []; % Lower bounds for affine constraints
 prob.buc = []; % Upper bounds for affine constraints
 prob.blx = [-Inf(1,n),zeros(1, (m+1)*m/2),-Inf(1,(n+1)*meq)]; % Lower bounds for scalar variables
 prob.bux = Inf(1, n+(m+1)*m/2+(n+1)*meq); % Upper bounds for scalar variables
-prob.f = sparse([M_c -M_T M_U;(x0-barx)' zeros(1,(m+1)*m/2+(n+1)*meq)]); % Parameters for scalar variables
+prob.f = sparse([M_c -M_T M_U;(barz-barx)' zeros(1,(m+1)*m/2+(n+1)*meq)]); % Parameters for scalar variables
 prob.g = ([sVec(barQ)+Rq;0])'; % Constant terms in the constraints
 prob.accs = [symbcon.MSK_DOMAIN_SVEC_PSD_CONE (n+2)*(n+1)/2 symbcon.MSK_DOMAIN_RPLUS 1]; % PSD cone, Rplus cone
 
@@ -144,8 +151,12 @@ param.MSK_IPAR_AUTO_UPDATE_SOL_INFO = 'MSK_ON';
 
 
 
-%[~, res] = mosekopt('minimize echo(5)', prob, param);
-[~, res] = mosekopt('minimize echo(0)', prob, param);
+if mosek_quiet
+    command='minimize echo(0)';
+else
+    command='minimize echo(5)';
+end
+[~, res] = mosekopt(command, prob, param);
 sdp_status=0;
 val=[];
 c=[];
@@ -166,13 +177,11 @@ if isempty(strfind(res.rcodestr, 'MSK_RES_ERR'))
         %fprintf('T difference norm=%4.10f\n\n',diff);
         S=sMat(sVec(barQ)+Rq+[M_c -M_T M_U]*sol2,n+1);
 
-        % The multiplier (Q*barx+d)'*(x-barx)+beta is bounded below by
-        % rho+beta. Shift a negative lower bound into S so that the
-        % remaining multiplier is nonnegative over the whole region.
+        % Correct the certificate if the affine KKT factor is negative on
+        % the current region. The resulting affine term is absorbed into S.
         gamma=min(rho+beta,0);
         if gamma<0
-            e=zeros(n+1,1);
-            e(end)=1;
+            e=zeros(n+1,1); e(end)=1;
             h=[-c;1+c'*barx];
             S=S+0.5*gamma*(e*h'+h*e');
             S=(S+S')/2;

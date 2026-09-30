@@ -1,5 +1,13 @@
 # Data Directory
 
-This directory contains existing test-set and synthetic `.mat` datasets used by the paper example scripts.
+This directory contains all `.mat` datasets used by the paper example scripts.
 
 Existing test-set instances are stored under `data/existing_testsets/`, and newly generated synthetic instances are stored under `data/synthetic/`.
+
+The structured paper datasets are under `data/structured/`:
+
+- `inexact_stqp/`: 120 inexact StQP instances;
+- `boxqp/`: 120 structured BoxQP instances;
+- `many_local_minima/`: 15 StQP instances with many local minima.
+
+MATLAB generators and preparation functions are under `data/generators/`.

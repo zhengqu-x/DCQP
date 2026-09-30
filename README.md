@@ -30,7 +30,7 @@ where:
 - ✅ **Global Optimization**: Uses cutting plane methods for finding global optima
 - ✅ **Bounded Feasible Region**: Requires bounded constraint sets
 - ✅ **Multiple Solvers**: Integrates with Gurobi and MOSEK for subproblems
-- ✅ **Comprehensive Examples**: Includes scripts for existing test sets and newly generated synthetic test problems
+- ✅ **Comprehensive Examples**: Includes scripts to reproduce the experiments in the paper
 - ✅ **Robust Implementation**: Error handling and debugging features
 
 ## Requirements
@@ -65,45 +65,80 @@ addpath('/path/to/DCQP');
 dcqp_startup();
 ```
 
-## Quick Start
+## Direct use of `dcqp_solve`
 
-### Basic Usage
+### Model and function signature
+
+The public solver call is
 
 ```matlab
-% Define a nonconvex QP problem
-Q = [1 -1; -1 -1];    % Indefinite matrix (nonconvex)
-d = [1; 1];           % Linear coefficients  
-A = [1 1; -1 0; 0 -1]; % Inequality constraints
-b = [1; 0; 0];        % Right-hand side
-
-% Solve the problem
-[x_opt, fval, info] = dcqp_solve(Q, d, A, b);
-
-fprintf('Optimal solution: x = [%.4f, %.4f]\n', x_opt);
-fprintf('Optimal value: %.6f\n', fval);
-fprintf('Status: %s\n', info.status);
+[x_opt,fval,info] = dcqp_solve(Q,d,A,b,Aeq,beq,params);
 ```
 
-### With Equality Constraints
+and it solves
 
-```matlab
-% Add equality constraints
-Aeq = [1 0];          % x1 = 0.5
-beq = 0.5;
-
-[x_opt, fval, info] = dcqp_solve(Q, d, A, b, Aeq, beq);
+```text
+minimize    x'*Q*x + 2*d'*x
+subject to  A*x <= b
+            Aeq*x = beq.
 ```
 
-### Custom Parameters
+`A` and `b` are required and must describe a nonempty, bounded feasible
+region. `Aeq`, `beq`, and `params` are optional. DCQP is intended for an
+indefinite `Q`; use a convex QP solver when `Q` is positive semidefinite.
+
+
+Without equality constraints, either omit them or pass empty matrices:
 
 ```matlab
-% Configure solver parameters
+[x_opt,fval,info] = dcqp_solve(Q,d,A,b);
+% Equivalent:
+[x_opt,fval,info] = dcqp_solve(Q,d,A,b,[],[]);
+```
+
+### Complete minimal example
+
+```matlab
+Q = [1 -1; -1 -1];
+d = [1; 1];
+A = [1 1; -1 0; 0 -1];
+b = [1; 0; 0];
+
+[x_opt,fval,info] = dcqp_solve(Q,d,A,b);
+
+fprintf('x = [%.6g, %.6g]\n',x_opt);
+fprintf('objective = %.8g\n',fval);
+fprintf('relative gap = %.2e\n',info.gap);
+fprintf('status = %s\n',info.status);
+```
+
+
+### Variable bounds
+
+Variable bounds must currently be included in `A*x <= b`. For example,
+to impose `lb <= x <= ub`:
+
+```matlab
+n = size(Q,1);
+A = [A; eye(n); -eye(n)];
+b = [b; ub(:); -lb(:)];
+```
+
+### Setting options
+
+Always begin with the complete default structure, then override individual
+fields. A partial structure such as `struct('max_time',600)` is not a valid
+direct input to `dcqp_solve` because the solver requires the other fields too.
+
+```matlab
 params = dcqp_default_params();
-params.gap_tolerance = 1e-5;      % Tighter optimality tolerance
-params.max_iterations = 500;      % More iterations
-params.verbose = true;            % Display progress
+params.gap_tolerance = 1e-5;
+params.max_iterations = 500;
+params.max_time = 1800;
+params.verbose = true;
+params.mosek_quiet = true;
 
-[x_opt, fval, info] = dcqp_solve(Q, d, A, b, [], [], params);
+[x_opt,fval,info] = dcqp_solve(Q,d,A,b,Aeq,beq,params);
 ```
 
 ## Algorithm Overview
@@ -115,30 +150,61 @@ DCQP employs a **Doubly nonnegative relaxation based Cutting plane** approach:
 3. **Lower Bound Computation**: Solves doubly nonnegative relaxations for global lower bounds
 4. **Convergence**: Terminates when the relative gap between lower and upper bounds is sufficiently small
 
-### Variable Shifting
 
-Before solving, DCQP computes lower bounds `l` for all variables and solves the shifted problem in variables `y = x - l`. The transformed feasible region is nonnegative in `y`, which is needed by the correction step. The shifted problem uses:
+### Complete option reference
 
-```matlab
-Q_shift = Q
-d_shift = Q*l + d
-b_shift = b - A*l
-beq_shift = beq - Aeq*l
-objective_constant = l'*Q*l + 2*d'*l
-```
+The following are all fields returned by `dcqp_default_params()`.
 
-The solver returns the original variables and objective value by applying `x_opt = y_opt + l` and adding `objective_constant` back to the shifted objective value.
-
-### Key Algorithmic Parameters
+#### Stopping and execution
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
-| `gap_tolerance` | 1e-4 | Relative optimality gap tolerance |
-| `max_iterations` | 300 | Maximum number of cutting plane iterations |
-| `max_time` | 3600 | Maximum computation time (seconds) |
-| `dc_regularization` | 1e-5 | DC decomposition regularization parameter |
-| `nb_rounds` | 10 | Number of random initializations for upper bound |
-| `do_scaling` | false | Scaling of the objective value |
+|---|---:|---|
+| `max_iterations` | `300` | Maximum number of outer cutting-plane iterations. |
+| `gap_tolerance` | `1e-4` | Target relative gap in the shifted solver objective. If the upper bound is close to zero, an absolute gap is used. |
+| `max_time` | `3600` | Wall-clock time limit in seconds. |
+| `robust_mode` | `false` | If `false`, rethrow solver errors. If `true`, return with `info.status='error'`. |
+| `save_failed_instances` | `true` | Save problem data and diagnostics when an error is caught. |
+
+#### Display and reporting
+
+| Parameter | Default | Description |
+|---|---:|---|
+| `verbose` | `true` | Print initialization and per-iteration progress. |
+| `display_summary` | `true` | Print the final solution or error summary. |
+| `mosek_quiet` | `true` | Suppress MOSEK optimizer output while retaining DCQP's own messages. |
+| `filename` | `'dcqp_result'` | Instance label shown in the final summary and used by debugging output. |
+
+#### Algorithm controls
+
+| Parameter | Default | Description |
+|---|---:|---|
+| `dc_regularization` | `1e-5` | Regularization used in the DC decomposition. |
+| `psd_check_tolerance` | `1e-8` | Numerical tolerance used by second-order/KKT positive-semidefiniteness checks. |
+| `nb_rounds` | `10` | Number of random starts used to obtain an initial upper bound, capped by the number of variables. |
+| `eta` | `0.9` | Interpolation factor used to form the relaxed cut target `nuR`. |
+| `konnofirst` | `false` | Try a validated generalized Konno cut before the DNN cut in each applicable iteration. |
+| `accept_cut_below_threshold` | `false` | When `false`, reject a DNN cut whose validated discarded-region bound remains below `nu`, allowing the generalized Konno fallback to run. When `true`, preserve the legacy below-threshold handling; a DNN cut may be accepted unless a previously added generalized Konno cut makes it redundant. |
+| `known_solution` | `[]` | Optional second-order KKT starting point in the original input coordinates. When supplied, DCQP checks feasibility, uses it as the initial incumbent, and skips the random upper-bound search. |
+| `do_scaling` | `false` | Automatically rescale the objective from the initial upper bound before the cutting-plane iterations. Results are converted back before return. |
+
+#### Subproblem tolerances and methods
+
+| Parameter | Default | Description |
+|---|---:|---|
+| `mosek_tolerance` | `1e-8` | MOSEK tolerance used for DNN lower-bound and validation subproblems. |
+| `tol_mosek_cut` | `1e-8` | Initial MOSEK tolerance used when generating a DNN cut; the cut routine may retry with adjusted tolerances. |
+| `gurobi_qp_tolerance` | `1e-9` | Optimality tolerance passed to convex Gurobi QP subproblems. |
+| `gurobi_lp_tolerance` | `1e-9` | Optimality tolerance passed to Gurobi LP subproblems. |
+| `gurobi_lp_method` | `1` | Gurobi LP method: `0` primal simplex, `1` dual simplex, `2` barrier. |
+| `gurobi_qp_method` | `2` | Gurobi QP method: `-1` automatic, `0` primal simplex, `1` dual simplex, `2` barrier. |
+
+#### Internal or reserved fields
+
+| Parameter | Default | Description |
+|---|---:|---|
+| `scaling` | `1` | Internal objective scale. Leave this at `1`; `dcqp_solve` updates it when `do_scaling=true`. |
+| `lower_bounds` | `[]` | Reserved and currently unused. Encode lower bounds in `A,b`. |
+| `upper_bounds` | `[]` | Reserved and currently unused. Encode upper bounds in `A,b`. |
 
 ## Datasets
 
@@ -154,7 +220,11 @@ Existing test-set `.mat` files are included under `data/existing_testsets/`. The
 
 ### Newly Generated Synthetic Problems
 
-Synthetic `.mat` files are included under `data/synthetic/`. These files can also be regenerated using `legacy/generateinstances_uniform.m` and `legacy/generateinstances_normal.m`. The standard synthetic collection contains 140 nonconvex QPs organized in seven groups (20 instances each):
+Synthetic `.mat` files are included under `data/synthetic/`. All distributed
+data generators are collected under `data/generators/`; the legacy synthetic
+scripts are `generateinstances_uniform.m` and `generateinstances_normal.m`.
+The standard synthetic collection contains 140 nonconvex QPs organized in
+seven groups (20 instances each):
 
 - **qp_n_0_1**: Normal distribution, density 0.1, no equality constraints
 - **qp_n_0_3**: Normal distribution, density 0.3, no equality constraints  
@@ -174,6 +244,17 @@ All synthetic problems have:
   - Equality constraints: Aeq (when present) generated similarly with beq = Aeq·x₀
 - **Variable bounds**: 0 ≤ x ≤ 1
 - **Feasible interior point**: x₀ constructed as normalized random vector to ensure all constraints are satisfiable
+
+### Structured Paper Examples
+
+The structured examples are stored under `data/structured/`:
+
+- `inexact_stqp/`: 120 inexact StQP instances
+- `boxqp/`: 120 structured BoxQP instances
+- `many_local_minima/`: 15 StQPs with many local minima
+
+See `data/structured/README.md` for construction details. All MATLAB
+generation and preparation functions are collected under `data/generators/`.
 
 
 
@@ -195,7 +276,7 @@ cd('paper-examples/');
 solve_existing_testsets_with_dcqp('qp20_10');  % 20 variables, 10 constraints
 solve_existing_testsets_with_dcqp('qp30_15');  % 30 variables, 15 constraints
 solve_existing_testsets_with_dcqp('qp40_20');  % 40 variables, 20 constraints
-solve_existing_testsets_with_dcqp('qp50_25');  % 50 variables, 25 constraints
+[summary,result_folder] = solve_existing_testsets_with_dcqp('qp50_25');
 ```
 
 ### Newly Generated Synthetic Problems
@@ -211,11 +292,31 @@ solve_synthetic_with_dcqp('qp_n_0_9');   % density 0.9, normal distribution, no 
 solve_synthetic_with_dcqp('qp_u_0_1');   % density 0.1, uniform distribution, no equality constraint
 solve_synthetic_with_dcqp('qp_u_0_3');   % density 0.3, uniform distribution, no equality constraint
 solve_synthetic_with_dcqp('qp_u_0_9');   % density 0.9, uniform distribution, no equality constraint
-solve_synthetic_with_dcqp('qp_u_25_1');  % density 0.1, uniform distribution, 25 equality constraints
+[summary,result_folder] = solve_synthetic_with_dcqp('qp_u_25_1');
 
 % Test specific instance in a group
-solve_synthetic_with_dcqp('qp_n_0_1', 5);  % Run only instance 5 from group
+[summary,result_folder] = solve_synthetic_with_dcqp('qp_n_0_1',5);
 ```
+
+### Structured Paper Examples
+
+Each function accepts `"all"`, numeric indices, or one or more instance IDs.
+An optional structure controls the time limit and solver settings.
+
+```matlab
+solve_inexactStQP_with_dcqp("all");
+solve_boxQP_with_dcqp(1:10);
+solve_manyLocalMinima_with_dcqp("all");
+
+solve_inexactStQP_with_gurobi(1, struct('max_time', 600));
+solve_boxQP_with_gurobi("all");
+solve_manyLocalMinima_with_gurobi("all");
+```
+
+The structured DCQP wrappers default to the settings used for the frozen
+120-instance run: `konnofirst=true`, a known-solution start when available,
+objective scaling, `gap_tolerance=1e-4`, and
+`accept_cut_below_threshold=false`.
 
 ### Comparison With Gurobi
 
@@ -226,18 +327,25 @@ For performance comparison, the package includes Gurobi-based solvers that attem
 cd('paper-examples/');
 
 % Existing test sets with Gurobi (with optional time limit)
-solve_existing_testsets_with_gurobi('qp20_10');           % Default time limit (1 hour)
-solve_existing_testsets_with_gurobi('qp30_15', 7200);     % 2 hours time limit
+solve_existing_testsets_with_gurobi('qp20_10');
+solve_existing_testsets_with_gurobi('qp30_15',"all",struct('max_time',7200));
 
 % Newly generated synthetic problems with Gurobi
-solve_synthetic_with_gurobi('qp_n_0_1');          % All instances in group, default time limit (1 hour)
-solve_synthetic_with_gurobi('qp_u_0_1', 5);       % Specific instance only, default time limit (1 hour)
-solve_synthetic_with_gurobi('qp_u_0_1', 5, 1800); % With 30-minute time limit
+solve_synthetic_with_gurobi('qp_n_0_1');
+solve_synthetic_with_gurobi('qp_u_0_1',5);
+solve_synthetic_with_gurobi('qp_u_0_1',5,struct('max_time',1800));
 ```
 
 ### Output Results
 
-Each existing test-set and synthetic run generates detailed results:
+Every paper-example runner uses the same result schema and writes below:
+
+```text
+paper-examples/results/
+├── existing-tests/<group>/<solver>_<start-time>/
+├── synthetic/<group>/<solver>_<start-time>/
+└── structured/<family>/<solver>_<start-time>/
+```
 
 **Console Output**: 
 - **DCQP Solution Summary** for each instance displaying:
@@ -250,10 +358,13 @@ Each existing test-set and synthetic run generates detailed results:
   - Computation time in seconds and total number of iterations
 - **Real-time progress** (when `params.verbose = true`): iteration solver details including bounds
 
-**Saved Files**:
-- **Diary files**: `diaryfile-existing-testsets-dcqp.txt`, `diaryfile-synthetic-dcqp.txt`, etc. containing complete console logs
-- **Individual result files**: Saved in `paper-examples/testresults/` directory with timestamps (e.g., `gurobi_qp20_10_1_1-2025-10-03_13-18-07.mat`) containing `bestsol` (optimal solution vector) and `info` (performance metrics for that instance)
-- **Summary statistics**: Saved in `paper-examples/summary_results/` directory as `myrecord` matrices containing performance data for solved instances. Standard DCQP summary rows contain [optimality_gap, max_constraint_violation, equality_constraint_violation, objective_value, lower_bound, computation_time, number of iterations]. Gurobi and equality-elimination helper summaries contain the same fields except number of iterations. For synthetic problems, this is only saved when all 20 instances in a group are solved together (not for individual instance runs).
+Each timestamped run contains `summary.csv`, `summary.mat`, `run.log`, and
+one MAT file per instance. The common named columns include initial and final
+relative gaps, time, bounds, iterations, number of added DCQP cuts, and
+feasibility violation. Detailed DCQP iteration records are stored in
+`raw.diagnostics` inside the per-instance MAT file; no separate `testresults/`
+or `summary_results/` directory is created. See `paper-examples/README.md` for
+the complete schema and calling conventions.
 
 
 ## Function Reference
@@ -278,22 +389,32 @@ Each existing test-set and synthetic run generates detailed results:
 
 ## Output Structure
 
-The solver returns detailed information about the solution:
+`dcqp_solve` returns the best point in `x_opt`, its objective value in
+`fval`, and a diagnostic structure `info` with these fields:
 
-```matlab
-info = struct(
-    'status',      'successfully reduced relative gap below 0.0001',  % Solution status
-    'gap',         4.33e-11,        % Gap measured in shifted solver coordinates
-    'original_gap',4.33e-11,        % Naive relative gap after adding objective constant
-    'iterations',  1,               % Number of iterations
-    'time',        0.19,            % Total computation time (seconds)
-    'upper_bound', -30.0,           % Best upper bound found
-    'lower_bound', -30.0,           % Best lower bound achieved  
-    'scaling',     1,               % Problem scaling factor
-    'variable_shift', zeros(n,1),   % Internal shift y = x - variable_shift
-    'objective_constant', 0         % Constant added back to shifted objective values
-);
-```
+| Field | Meaning |
+|---|---|
+| `status` | Termination description. |
+| `gap` | Relative gap used by the solver in shifted coordinates (absolute gap when the upper bound is close to zero). |
+| `original_gap` | Relative gap after restoring the objective constant; reported for reference. |
+| `iterations` | Number of completed outer iterations. |
+| `time` | Total wall-clock solution time in seconds. |
+| `upper_bound`, `lower_bound` | Final bounds in the original objective coordinates. |
+| `initial_relative_gap` | Relative gap after the first lower-bound computation. |
+| `initial_upper_bound`, `initial_lower_bound` | Initial bounds in the original objective coordinates. |
+| `added_cuts` | Total number of inequalities added by DCQP. |
+| `dnn_cuts`, `konno_cuts` | Added-cut counts split by DNN and generalized Konno cuts. |
+| `cut_records_match` | Whether the detailed cut records agree with the reported cut count. |
+| `scaling` | Objective scaling factor used internally. |
+| `variable_shift` | Shift `y = x - variable_shift` used internally. |
+| `objective_constant` | Constant added when converting shifted bounds back to the original objective. |
+| `initialization` | Either `'random'` or `'known_solution'`. |
+| `initial_solution` | Initial incumbent in the original input coordinates. |
+| `diagnostics` | Detailed per-iteration bounds, timings, cut values, and cut records. |
+
+When `robust_mode=true` and an error occurs, `x_opt=[]`, `fval=Inf`,
+`info.status='error'`, and `info.error_message` and `info.error_stack`
+describe the failure.
 
 ### Status Codes
 - `'successfully reduced relative gap below X'`: Solution found within relative gap tolerance X
@@ -332,9 +453,11 @@ DCQP/
 ├── dcqp_startup.m            # Environment setup
 ├── dcqp_version.m            # Version information
 ├── dcqp_check_input.m        # Input validation
-├── data/                     # Existing test-set and synthetic .mat datasets
+├── data/                     # Packaged datasets and their generators
 │   ├── existing_testsets/    # Existing test-set .mat files
-│   └── synthetic/            # Newly generated synthetic .mat files
+│   ├── synthetic/            # Random synthetic .mat files
+│   ├── structured/           # Structured paper-example .mat files
+│   └── generators/           # MATLAB generation and preparation functions
 ├── utils/                    # Utility functions
 │   ├── DC_decomposition.m    # DC decomposition
 │   ├── compute_ub.m          # Upper bound computation
@@ -343,7 +466,7 @@ DCQP/
 │   └── ...                   # Other utilities  
 ├── paper-examples/           # Reproducible experiments
 ├── legacy/                   # Legacy functions
-└── testresults/             # Saved results
+└── tests/                    # Frozen-runtime integrity check
 ```
 
 
@@ -383,6 +506,13 @@ This software is distributed under an Academic License for academic research use
 - **Contact**: zhengqu@szu.edu.cn
 
 ## Version History
+
+- **v1.1.0** (2026-09-30): Reproducibility and structured-example release
+  - Added the structured BoxQP, inexact-StQP, and many-local-minima suites
+  - Unified all paper-example runners and result summaries
+  - Added generalized Konno-cut support and validated DNN-cut recovery
+  - Added MOSEK quiet mode and correct added-cut reporting
+  - Added frozen-runtime provenance and integrity verification
 
 - **v1.0.1** (2026-06-03): Maintenance update
   - Added internal variable shifting for nonnegative correction coordinates

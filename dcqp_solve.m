@@ -26,6 +26,8 @@ function [x_opt, fval, info] = dcqp_solve(Q, d, A, b, Aeq, beq, params)
 %   Aeq     - (meq x n) matrix (equality constraint coefficients, optional)
 %   beq     - (meq x 1) vector (equality constraint bounds, optional)
 %   params  - Structure with algorithm parameters (optional)
+%             .known_solution: known optimal point in input coordinates;
+%             when supplied, initialize directly without random starts.
 %
 % OUTPUT:
 %   x_opt   - (n x 1) optimal solution vector
@@ -37,6 +39,11 @@ function [x_opt, fval, info] = dcqp_solve(Q, d, A, b, Aeq, beq, params)
 %             .time        - Total computation time
 %             .upper_bound - Best upper bound found
 %             .lower_bound - Best lower bound found
+%             .added_cuts  - Number of inequalities added by DCQP
+%             .dnn_cuts    - Number of added DNN cuts
+%             .konno_cuts  - Number of added generalized Konno cuts
+%             .initial_relative_gap - Relative gap after the first bound
+%             .diagnostics - Detailed per-iteration records
 %
 % EXAMPLES:
 %   % Simple nonconvex QP
@@ -84,8 +91,21 @@ try
     [n,Q,d,A,b,Aeq,beq,x_shift,obj_constant]=dcqp_check_input(Q, d, A, b, Aeq, beq, params);
     
     nb_rounds = max(1, min(n, params.nb_rounds));
-    
-    [ub,sol]=compute_ub(Q,d,A,b,Aeq,beq,n,params,[],nb_rounds);
+    use_known_solution=isfield(params,'known_solution') && ~isempty(params.known_solution);
+    if use_known_solution
+        validateattributes(params.known_solution,{'double'},{'real','finite','vector','numel',n});
+        sol=full(params.known_solution(:))-x_shift;
+        violation=max([0;A*sol-b]);
+        if ~isempty(Aeq), violation=max(violation,max(abs(Aeq*sol-beq))); end
+        if violation>max(1e-8,10*params.gurobi_lp_tolerance)
+            error('dcqp_solve:invalid_known_solution','The supplied known solution is infeasible (violation %.2e).',violation);
+        end
+        ub=sol'*Q*sol+2*d'*sol;
+        initialization='known_solution';
+    else
+        [ub,sol]=compute_ub(Q,d,A,b,Aeq,beq,n,params,[],nb_rounds);
+        initialization='random';
+    end
 
     if params.do_scaling==true
         if abs(ub)>=5
@@ -99,12 +119,21 @@ try
     end
     
    
-    [ub2,sol2]=compute_ub(Q,d,A,b,Aeq,beq,n,params,sol,nb_rounds);
+    if use_known_solution
+        sol2=sol; ub2=sol2'*Q*sol2+2*d'*sol2;
+    else
+        [ub2,sol2]=compute_ub(Q,d,A,b,Aeq,beq,n,params,sol,nb_rounds);
+    end
 
     if params.verbose==true
-        fprintf('initial objective value=%.2f\n',ub2/params.scaling+obj_constant);
+        fprintf('initialization = %s\n',initialization);
+        fprintf('initial objective value = %.4e\n',ub2/params.scaling+obj_constant);
+        fprintf('initial bestub (solver units) = %.4e, scaling = %.2e, shift constant = %.2e\n', ...
+            ub2, params.scaling, obj_constant);
     end
-    [best_ub,best_sol,best_lb,nb_iters]=qpsolver(Q,d,A,b,Aeq,beq,-Inf,ub2,sol2,params);
+    params.solve_timer=maintimer;
+    [best_ub,best_sol,best_lb,nb_iters,cut_counts,diagnostics]=qpsolver( ...
+        Q,d,A,b,Aeq,beq,-Inf,ub2,sol2,params);
     total_time=toc(maintimer);
     
     x_opt = best_sol + x_shift;
@@ -123,6 +152,20 @@ try
     else
         original_gap = abs(fval - final_lb);
     end
+
+    if isempty(diagnostics.bestub_record) || isempty(diagnostics.bestlb_record)
+        initial_upper_bound=best_ub;
+        initial_lower_bound=best_lb;
+    else
+        initial_upper_bound=diagnostics.bestub_record(1);
+        initial_lower_bound=diagnostics.bestlb_record(1);
+    end
+    if abs(initial_upper_bound)>params.gap_tolerance
+        initial_gap=abs(initial_upper_bound-initial_lower_bound)/ ...
+            abs(initial_upper_bound);
+    else
+        initial_gap=abs(initial_upper_bound-initial_lower_bound);
+    end
     
     
 
@@ -131,7 +174,7 @@ try
         status = ['successfully reduced relative gap below ' num2str(params.gap_tolerance)] ;
     elseif total_time >= params.max_time
         status = 'time_limit reached';
-    elseif nb_iters>params.max_iterations
+    elseif nb_iters>=params.max_iterations
         status = 'iteration_limit reached';
     else
         status='not solved';
@@ -145,10 +188,20 @@ try
     info.time = total_time;
     info.upper_bound = fval;
     info.lower_bound = final_lb;
+    info.initial_relative_gap = initial_gap;
+    info.initial_upper_bound = initial_upper_bound + obj_constant;
+    info.initial_lower_bound = initial_lower_bound + obj_constant;
+    info.added_cuts = cut_counts.total;
+    info.dnn_cuts = cut_counts.dnn;
+    info.konno_cuts = cut_counts.konno;
+    info.cut_records_match = cut_counts.records_match;
     info.original_gap = original_gap;
     info.scaling = params.scaling;
     info.variable_shift = x_shift;
     info.objective_constant = obj_constant;
+    info.initialization = initialization;
+    info.initial_solution = sol2+x_shift;
+    info.diagnostics = diagnostics;
 
     
     
@@ -157,13 +210,15 @@ try
         fprintf('\n=== DCQP Solution Summary ===\n');
         fprintf('Instance name='); fprintf(params.filename);fprintf('\n');
         fprintf('Status: %s\n', status);
-        fprintf('Best objective value: %.6e\n', fval);
+        fprintf('Best objective value: %.4e\n', fval);
         fprintf('Relative gap: %.2e\n', gap);
         fprintf('Original-coordinate relative gap: %.2e\n', original_gap);
         fprintf('Variable shift norm: %.2e\n', norm(x_shift));
-        fprintf('Objective constant from shift: %.6e\n', obj_constant);
+        fprintf('Objective constant from shift: %.2e\n', obj_constant);
         fprintf('Computation time: %.2f seconds\n', total_time);
         fprintf('Number of iterations: %d\n', info.iterations);
+        fprintf('Number of added cuts: %d (DNN: %d, generalized Konno: %d)\n', ...
+            info.added_cuts,info.dnn_cuts,info.konno_cuts);
         fprintf('Problem dimension: %d variables, %d inequality constraints, %d equality constraints\n', n, size(A,1),size(Aeq,1));
         fprintf('==============================\n\n');
     end
@@ -181,6 +236,14 @@ catch ME
     info.time = total_time;
     info.upper_bound = inf;
     info.lower_bound = -inf;
+    info.initial_relative_gap = NaN;
+    info.initial_upper_bound = Inf;
+    info.initial_lower_bound = -Inf;
+    info.added_cuts = NaN;
+    info.dnn_cuts = NaN;
+    info.konno_cuts = NaN;
+    info.cut_records_match = false;
+    info.diagnostics = struct();
     info.error_message = ME.message;
     info.error_stack = ME.stack;
 
