@@ -27,7 +27,7 @@ end
 normalized=strrep(result_folder,'\','/');
 if contains(normalized,'/synthetic/'), count=20;
 elseif contains(normalized,'/existing-tests/'), count=16;
-elseif contains(normalized,'/structured/many_local_minima/'), count=5;
+elseif contains(normalized,'/structured/many_local_minima/'), count=1;
 else, count=120;
 end
 end

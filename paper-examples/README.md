@@ -61,7 +61,7 @@ The structured examples are stored under `../data/structured/`:
 - `inexact_stqp/`: 120 inexact StQP instances generated with the authors'
   Julia COP code, without the cardinality constraint
 - `boxqp/`: 120 structured BoxQP instances
-- `many_local_minima/`: 5 StQPs with many local minima at original dimension
+- `many_local_minima/`: 1 StQP with many local minima at original dimension
   25 (reduced solver dimension 24)
 
 See [`../data/structured/README.md`](../data/structured/README.md) for

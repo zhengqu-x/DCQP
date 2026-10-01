@@ -11,8 +11,8 @@ and limitations of DCQP beyond the original random synthetic examples.
   variable.
 - `boxqp/`: 120 BoxQPs with guaranteed inexact RLT relaxations—60 each at
   dimensions 25 and 50.
-- `many_local_minima/`: 5 saved StQPs with certified many-local-minima
-  constructions at original dimension 25. The saved models have dimension 24
+- `many_local_minima/`: 1 saved StQP with a certified many-local-minima
+  construction at original dimension 25. The saved model has dimension 24
   after eliminating one simplex variable.
 
 All generation functions are stored together in `../generators/`. Public

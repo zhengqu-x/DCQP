@@ -8,6 +8,6 @@ The structured paper datasets are under `data/structured/`:
 
 - `inexact_stqp/`: 120 inexact StQP instances;
 - `boxqp/`: 120 structured BoxQP instances;
-- `many_local_minima/`: 5 dimension-25 StQP instances with many local minima.
+- `many_local_minima/`: 1 dimension-25 StQP instance with many local minima.
 
 MATLAB generators and preparation functions are under `data/generators/`.
