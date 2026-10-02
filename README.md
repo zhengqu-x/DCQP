@@ -275,8 +275,7 @@ DCQP/
 │   ├── rescale_constraint_by_slack.m # Constraint row rescaling helper
 │   └── ...                   # Other utilities  
 ├── paper-examples/           # Reproducible experiments
-├── legacy/                   # Legacy functions
-└── tests/                    # Frozen-runtime integrity check
+└── legacy/                   # Legacy functions
 ```
 
 
